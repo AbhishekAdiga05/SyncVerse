@@ -4,13 +4,20 @@ import { useRef, useMemo, useState, useEffect } from "react"
 import * as Y from "yjs"
 import { SocketIOProvider } from "y-socket.io"
 import { useParams, useNavigate } from "react-router-dom"
-import { Users, Code2, Copy, Check, ArrowLeft } from "lucide-react"
+import { Users, Code2, Copy, Check, ArrowLeft, Play, Terminal, Loader2 } from "lucide-react"
 import { useUser } from "@clerk/clerk-react"
 
 // A preset list of aesthetic colors for remote cursors
 const COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#10b981", 
   "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e"
+]
+
+const LANGUAGES = [
+  { id: 63, label: "JavaScript", monaco: "javascript" },
+  { id: 71, label: "Python", monaco: "python" },
+  { id: 54, label: "C++", monaco: "cpp" },
+  { id: 62, label: "Java", monaco: "java" },
 ]
 
 export default function Room() {
@@ -28,6 +35,11 @@ export default function Room() {
   const [users, setUsers] = useState([])
   const [copied, setCopied] = useState(false)
   const [editorReady, setEditorReady] = useState(false)
+  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0])
+  const [stdin, setStdin] = useState("")
+  const [output, setOutput] = useState("")
+  const [executionMeta, setExecutionMeta] = useState(null)
+  const [isRunning, setIsRunning] = useState(false)
 
   // Automatically update the username if the user logs in via Clerk
   useEffect(() => {
@@ -62,6 +74,60 @@ export default function Room() {
   const handleMount = (editor) => {
     editorRef.current = editor
     setEditorReady(true) // Signals that Monaco is ready to be bound
+  }
+
+  const handleLanguageChange = (e) => {
+    const nextLanguage = LANGUAGES.find((language) => language.id === Number(e.target.value))
+    if (nextLanguage) setSelectedLanguage(nextLanguage)
+  }
+
+  const handleRunCode = async () => {
+    if (!editorRef.current || isRunning) return
+
+    const sourceCode = editorRef.current.getValue()
+    setIsRunning(true)
+    setOutput("Running...")
+    setExecutionMeta(null)
+
+    try {
+      const response = await fetch("http://localhost:3000/api/execution/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          sourceCode,
+          languageId: selectedLanguage.id,
+          stdin,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        throw new Error(data.message || data.error || "Code execution failed")
+      }
+
+      const result = data.result
+      const visibleOutput =
+        result.stdout ||
+        result.stderr ||
+        result.compileOutput ||
+        result.message ||
+        result.status?.description ||
+        "Program finished with no output."
+
+      setOutput(visibleOutput)
+      setExecutionMeta({
+        status: result.status?.description || "Finished",
+        time: result.time,
+        memory: result.memory,
+      })
+    } catch (error) {
+      setOutput(error.message || "Code execution failed")
+    } finally {
+      setIsRunning(false)
+    }
   }
 
   useEffect(() => {
@@ -193,22 +259,80 @@ export default function Room() {
            <div className="text-sm text-neutral-400 flex items-center gap-2 bg-neutral-800 px-3 py-1.5 rounded-md border border-neutral-700">
               <span className="font-mono">{roomId}</span>
            </div>
+           <div className="flex items-center gap-3">
+              <select
+                value={selectedLanguage.id}
+                onChange={handleLanguageChange}
+                className="h-9 rounded-md bg-neutral-800 border border-neutral-700 px-3 text-sm text-white focus:outline-none focus:border-amber-500"
+              >
+                {LANGUAGES.map((language) => (
+                  <option key={language.id} value={language.id}>
+                    {language.label}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={handleRunCode}
+                disabled={isRunning || !editorReady}
+                className="h-9 px-4 rounded-md bg-amber-500 text-gray-950 font-bold text-sm hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
+              >
+                {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+                {isRunning ? "Running" : "Run Code"}
+              </button>
+           </div>
         </header>
 
-        <div className="flex-1 w-full bg-[#1e1e1e]">
-          <Editor
-            height="100%"
-            width="100%"
-            defaultLanguage="javascript"
-            defaultValue="// Start coding collaboratively here..."
-            theme="vs-dark"
-            onMount={handleMount}
-            options={{
-              minimap: { enabled: false },
-              padding: { top: 16 },
-              fontSize: 14,
-            }}
-          />
+        <div className="flex-1 w-full min-h-0 flex bg-[#1e1e1e]">
+          <div className="flex-1 min-w-0">
+            <Editor
+              height="100%"
+              width="100%"
+              language={selectedLanguage.monaco}
+              defaultValue="// Start coding collaboratively here..."
+              theme="vs-dark"
+              onMount={handleMount}
+              options={{
+                minimap: { enabled: false },
+                padding: { top: 16 },
+                fontSize: 14,
+              }}
+            />
+          </div>
+
+          <aside className="w-80 xl:w-96 bg-neutral-950 border-l border-neutral-800 flex flex-col shrink-0">
+            <div className="h-1/2 min-h-0 border-b border-neutral-800 flex flex-col">
+              <div className="h-11 px-4 border-b border-neutral-800 flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                <Terminal className="w-4 h-4 text-amber-500" />
+                Input
+              </div>
+              <textarea
+                value={stdin}
+                onChange={(e) => setStdin(e.target.value)}
+                spellCheck="false"
+                placeholder="Program input goes here..."
+                className="flex-1 min-h-0 w-full resize-none bg-neutral-950 p-4 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-none"
+              />
+            </div>
+
+            <div className="h-1/2 min-h-0 flex flex-col">
+              <div className="h-11 px-4 border-b border-neutral-800 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
+                  <Terminal className="w-4 h-4 text-amber-500" />
+                  Output
+                </div>
+                {executionMeta && (
+                  <div className="text-xs text-neutral-500 truncate">
+                    {executionMeta.status}
+                    {executionMeta.time ? ` | ${executionMeta.time}s` : ""}
+                    {executionMeta.memory ? ` | ${executionMeta.memory} KB` : ""}
+                  </div>
+                )}
+              </div>
+              <pre className="flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-sm text-neutral-100">
+                {output || "Run code to see output here."}
+              </pre>
+            </div>
+          </aside>
         </div>
       </section>
     </main>

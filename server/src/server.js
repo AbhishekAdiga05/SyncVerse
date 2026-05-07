@@ -6,6 +6,8 @@ import cors from "cors";
 import { connectDB } from "./config/db.js";
 import { initializeYjsSockets } from "./sockets/yjs.socket.js";
 import workspaceRoutes from "./routes/workspace.routes.js";
+import executionRoutes from "./routes/execution.routes.js";
+
 
 // 1. Initialize Database Connection
 connectDB();
@@ -32,6 +34,7 @@ initializeYjsSockets(io);
 
 // 5. Routes
 app.use("/api/workspaces", workspaceRoutes);
+app.use("/api/execution", executionRoutes);
 
 app.get("/health", (req, res) => {
     res.status(200).json({
