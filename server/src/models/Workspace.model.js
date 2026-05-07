@@ -1,0 +1,23 @@
+import mongoose from "mongoose";
+
+const workspaceSchema = new mongoose.Schema({
+  roomId: {
+    type: String,
+    required: true,
+    unique: true
+  },
+  ownerId: {
+    type: String, // From Clerk user.id
+    required: false
+  },
+  code:{
+    type: String, 
+    default: "// Start coding collaboratively here..." 
+  },
+},
+{
+    timestamps: true
+});
+
+const Workspace = mongoose.model("Workspace", workspaceSchema);
+export default Workspace;   

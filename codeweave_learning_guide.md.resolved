@@ -1,0 +1,132 @@
+# CodeWeave: Comprehensive Learning & Interview Guide
+
+> [!NOTE]
+> This is a living document. As we build out each phase of CodeWeave, this guide will be updated with the core concepts, code breakdowns, and technical interview talking points for the new features.
+
+---
+
+## 🟢 PHASE 1 & 2: Dynamic Routing & Collaboration Experience
+
+To confidently defend the real-time collaboration features of your project, you need to master three core concepts: **Dynamic Routing**, **CRDTs (Yjs)**, and **The Awareness Protocol**.
+
+### Concept 1: Dynamic Routing (React Router)
+**The Problem:** Your original app connected all users to a single, global room because the backend and frontend didn't have a way to differentiate sessions.
+**The Solution:** We implemented React Router to map distinct URLs to different workspaces.
+
+* **How it works:** In `Room.jsx`, we use the hook `const { roomId } = useParams()`. This extracts the dynamic ID from the URL (e.g., `/room/12345`). We then pass that `roomId` directly into our Socket.io provider as the document name. The backend automatically isolates real-time broadcasting to only the users connected to that specific document name.
+* **Interview Question:** *"How did you handle multiple separate workspaces simultaneously?"*
+* **Your Answer:** *"I used React Router to create dynamic URL parameters (`/room/:id`). On the client side, I extract that ID and use it as the namespace document name for my WebSocket connection. This ensures the backend automatically isolates real-time broadcasting to only the users connected to that specific URL without needing complex backend room management."*
+
+### Concept 2: CRDTs and Yjs (The Brain of the Editor)
+**The Problem:** If two users edit the exact same line of code at the exact same millisecond, how do you prevent them from overwriting each other or crashing the document?
+**The Solution:** **Conflict-free Replicated Data Types (CRDTs)** via the `Yjs` library.
+
+* **How it works:** Instead of sending whole strings of text back and forth, Yjs breaks the document down into tiny individual character insertions and deletions. Each operation is assigned a unique logical timestamp. Yjs uses mathematical algorithms to merge these operations perfectly without any central server logic. If User A types "Hello" and User B types "World", Yjs merges them perfectly into "HelloWorld".
+* **Interview Question:** *"How did you prevent race conditions and merge conflicts when multiple users type simultaneously?"*
+* **Your Answer:** *"I implemented a CRDT architecture using Yjs. Instead of operational transformation (OT) which requires a heavy central server to resolve conflicts, CRDTs allow peer-to-peer conflict resolution. Every keystroke is treated as an immutable state update, mathematically guaranteeing that all clients eventually reach the exact same document state, regardless of network latency."*
+
+### Concept 3: The Awareness Protocol (Cursors & Presence)
+**The Problem:** We need to show where a user's mouse is and what their name is, but we *don't* want to save mouse coordinates into the actual code document permanently.
+**The Solution:** The **Yjs Awareness Protocol**.
+
+* **How it works:** Yjs has a separate engine called "Awareness" built specifically for ephemeral (temporary) data. We package the username and a random hex color into a JSON object and throw it into the local awareness state. The `MonacoBinding` automatically listens to this state and draws the colored cursors on the screen using CSS tooltips.
+* **Interview Question:** *"How did you implement the real-time remote cursors?"*
+* **Your Answer:** *"I utilized the Yjs Awareness protocol. While the actual code relies on CRDTs for persistent syncing, the remote cursors, selections, and user colors are ephemeral state. I injected custom user metadata into the awareness state, which the Monaco Editor binding continuously polls to render custom CSS tooltips showing where other users are currently focused."*
+
+---
+
+## 🟢 PHASE 3: Persistent Workspaces (MongoDB)
+
+To make workspaces persistent without flooding our database with requests, we implemented a sophisticated server-side strategy intercepting Yjs document events.
+
+### Concept 4: Server-Side Persistence & Hooks
+**The Problem:** React clients could manually send `fetch()` requests to save their code, but this leads to desynchronized data, redundant network calls, and poor performance.
+**The Solution:** We made the Node.js server the single source of truth by hooking directly into the `y-socket.io` lifecycle events (`document-loaded` and `document-update`).
+
+* **How it works:** We don't write any database logic on the frontend. Instead, the backend listens to WebSocket events. When a user creates a room, `document-loaded` fires and the server fetches code from MongoDB. When users type, `document-update` fires, allowing the server to save the exact Yjs state silently in the background. 
+* **Interview Question:** *"How did you persist the real-time document state to your database?"*
+* **Your Answer:** *"Instead of relying on the client to send HTTP requests, I built a completely server-driven persistence layer. By hooking into the Yjs WebSocket lifecycle events, my Node.js server intercepts document updates and saves them directly to MongoDB. This keeps the frontend incredibly thin and guarantees that the database always holds the most accurate, conflict-free state."*
+
+### Concept 5: Debouncing Database Writes
+**The Problem:** If 5 users type at 80 words per minute, the server would execute hundreds of MongoDB `findOneAndUpdate` queries per second, quickly crashing the database.
+**The Solution:** A Debounce Timer mechanism.
+
+* **How it works:** Inside the `document-update` hook, we use a `setTimeout`. Every single keystroke resets a 2-second timer. The server *only* executes the MongoDB query if the entire room stops typing for a full 2 seconds.
+* **Interview Question:** *"How did you prevent your database from being overwhelmed by the high frequency of real-time edits?"*
+* **Your Answer:** *"I implemented a debounce mechanism on the server. Instead of writing to the database on every CRDT operation, I track updates in memory using a timeout. The server only commits the transaction to MongoDB after a period of inactivity (e.g., 2 seconds). This reduces database writes by over 99% while still ensuring data safety."*
+
+### Concept 6: Distributed System Race Conditions
+**The Problem:** When loading a room, the React client automatically mounts the Monaco editor with a default placeholder text. If the client syncs this default text before the server finishes loading the real code from MongoDB, the real code gets overwritten or ignored.
+**The Solution:** Authoritative Server Override.
+
+* **How it works:** In our `document-loaded` hook, once the server retrieves the document from MongoDB, it forcefully clears whatever text the client might have prematurely injected and applies the database string.
+* **Interview Question:** *"Did you encounter any race conditions between the database load time and client synchronization?"*
+* **Your Answer:** *"Yes. Because WebSockets connect faster than MongoDB can query, clients would sometimes initialize the CRDT document with their editor's default text, making the server think the document was no longer empty. I solved this by treating the server's database read as the absolute source of truth—once the query resolves, the server forcefully clears any prematurely injected client data and propagates the authoritative database state."*
+
+## 🟢 ARCHITECTURE: Model-View-Controller (MVC) Pattern
+
+As the application grew with MongoDB and REST APIs, we restructured the backend to follow industry-standard architectural patterns to ensure scalability and maintainability.
+
+### Concept 9: Separation of Concerns (MVC)
+**The Problem:** Stacking all database logic, API routes, and WebSocket listeners into a single `server.js` file creates "spaghetti code." If the app scales, this file becomes unreadable and impossible for multiple engineers to work on simultaneously.
+**The Solution:** We implemented the Model-View-Controller (MVC) architectural pattern.
+
+* **How it works:** We separated our backend into distinct layers:
+  - **Models (`models/Workspace.model.js`):** Defines the database schema and structure.
+  - **Controllers (`controllers/workspace.controller.js`):** Handles the core business logic (talking to the database and formatting responses).
+  - **Routes (`routes/workspace.routes.js`):** Acts as a traffic cop, mapping URL endpoints (like `/api/workspaces`) to specific controller functions.
+  - **Config & Sockets:** We extracted database connections (`db.js`) and Yjs WebSocket listeners (`yjs.socket.js`) into dedicated modules.
+* **Interview Question:** *"How did you structure your backend to handle future scalability?"*
+* **Your Answer:** *"I adhered strictly to the principle of Separation of Concerns by adopting the MVC pattern. I abstracted my database schemas into Models, my business logic into Controllers, and my API endpoints into Routers. This transformed my `server.js` from a monolithic script into a clean entry-point orchestrator, ensuring that adding new features in the future won't clutter existing code or introduce regression bugs."*
+
+## 🟢 NETWORKING & DEBUGGING: Overcoming Systems Failures
+
+During development, we encountered incredibly subtle infrastructure bugs that completely halted the application. Knowing how to debug these is a massive green flag for senior engineering roles.
+
+### Concept 10: Cross-Origin WebSocket Failures
+**The Problem:** The frontend UI worked perfectly, but real-time cursor syncing failed completely.
+**The Solution:** Correcting the WebSocket target port boundary.
+
+* **How it works:** When developing locally, Vite runs the frontend on port `5173`, while the Express backend runs on port `3000`. Initially, our `y-socket.io` client tried to connect to a relative path (`"/"`), which made it attempt to open a WebSocket with the Vite dev server instead of the Node backend. By explicitly passing the backend URL (`"http://localhost:3000"`) into the `SocketIOProvider`, the client correctly established a cross-origin socket connection.
+* **Interview Question:** *"Did you face any issues linking the frontend with the backend?"*
+* **Your Answer:** *"Yes, when splitting the stack into a Vite frontend and an Express backend, I ran into Cross-Origin Resource Sharing (CORS) and port boundary issues. My WebSockets initially failed because they were defaulting to relative paths. I solved this by explicitly directing my WebSocket client to the backend's port and configuring the `cors` middleware in Express to accept WebSocket upgrades from external origins."*
+
+### Concept 11: Internal DNS Hijacking in Node.js
+**The Problem:** Mongoose hung indefinitely while trying to connect to MongoDB, throwing `querySrv ECONNREFUSED`. Windows `nslookup` worked fine, but Node.js failed to resolve the database URL.
+**The Solution:** Forcing Node to bypass the local broken DNS resolver.
+
+* **How it works:** Node.js uses an internal C++ library (`c-ares`) for DNS resolution. On certain restrictive networks (like those with strict VPNs, ISP filters, or antivirus interference), `c-ares` gets blocked from querying DNS records like `SRV`. To bypass this, we injected `dns.setServers(['8.8.8.8', '8.8.4.4'])` into our database configuration file. This "hacker fix" forced the Node server to ignore the local network and query Google's public DNS servers directly, instantly resolving the connection timeout.
+* **Interview Question:** *"What was the most difficult bug you resolved in this project?"*
+* **Your Answer:** *"The hardest bug was a low-level networking issue where Node.js couldn't connect to MongoDB Atlas due to `querySrv ECONNREFUSED` errors. After verifying my IP whitelist, I realized the host machine's DNS configuration was blocking Node's internal `c-ares` DNS resolver. I engineered a workaround by importing the `dns` module and overriding the default servers with Google's public DNS (`8.8.8.8`). This forced Node to bypass the restrictive local network, completely solving the database timeout."*
+
+## 🟡 PHASE 4: Judge0 Code Execution (Pending)
+*(This section will be updated when we implement real-time code execution.)*
+
+## 🟢 PHASE 5: Authentication System (Clerk Integration)
+
+Authentication is crucial for ownership, security, and dashboard personalization. We implemented an industry-standard Auth flow using Clerk.
+
+### Concept 7: Third-Party Identity Providers (Clerk)
+**The Problem:** Building a custom authentication system (hashing passwords with bcrypt, managing JWT access/refresh tokens, handling forgotten passwords, and OAuth providers like Google) is incredibly complex and poses massive security risks if done incorrectly.
+**The Solution:** We utilized Clerk as our Identity Provider (IdP) to offload the security footprint.
+
+* **How it works:** We wrapped our React application in a `<ClerkProvider>`. When a user visits the homepage, they can sign in via a highly optimized, pre-built UI (`<SignInButton />`). The `<SignedIn>` and `<SignedOut>` components natively control which UI elements render based on the user's authentication state.
+* **Interview Question:** *"Why did you choose to use a third-party service like Clerk instead of building authentication from scratch?"*
+* **Your Answer:** *"While I understand how to build JWT-based authentication using tools like Passport.js and bcrypt, I opted for Clerk to ensure enterprise-grade security. Managing session cookies, OAuth callbacks, and token rotation introduces significant security vulnerabilities if not perfectly implemented. By delegating identity management to an Identity Provider (IdP) like Clerk, I accelerated development while guaranteeing a secure, frictionless user experience."*
+
+### Concept 8: Relational Workspaces (User Dashboards)
+**The Problem:** Without authentication, anyone with a room link can join anonymously, and users cannot track their previous workspaces.
+**The Solution:** Tying MongoDB Workspace documents to specific Clerk User IDs.
+
+* **How it works:** We updated the Mongoose `Workspace` schema to include an `ownerId` field. Now, when an authenticated user clicks 'Create Workspace', the React frontend extracts their unique Clerk `user.id` and sends it to our Express server via a `POST /api/workspaces` route. The server stores the `ownerId` alongside the `roomId`. On the homepage, a `GET` request retrieves all workspaces matching that `ownerId` to populate the user's personal dashboard. Furthermore, when entering a room, we automatically extract the user's Clerk `firstName` to use as their real-time collaboration username, removing the need for a manual 'Enter Name' prompt.
+* **Interview Question:** *"How does your application map users to their created content?"*
+* **Your Answer:** *"I utilized a relational pattern in MongoDB. I expanded the Workspace schema to store an `ownerId` corresponding to the user's unique Clerk ID. I then exposed a REST API endpoint that queries the database for workspaces matching the authenticated user's ID. This allows the frontend to dynamically render a personalized dashboard of historical workspaces, turning the app from a temporary session tool into a persistent SaaS platform."*
+
+## 🔴 PHASE 6: AI Intent Mode (Pending)
+*(This section will be updated when we integrate the Gemini API.)*
+
+## 🔴 PHASE 7: Codebase Visualization (Pending)
+*(This section will be updated when we build the React Flow architecture map.)*
+
+## 🔴 PHASE 8: Dockerized Deployment (Pending)
+*(This section will be updated when we containerize the application.)*
