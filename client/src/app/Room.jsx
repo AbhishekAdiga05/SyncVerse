@@ -1,47 +1,71 @@
 import { Editor } from "@monaco-editor/react"
 import { MonacoBinding } from "y-monaco"
-import { useRef, useMemo, useState, useEffect } from "react"
+import { useRef, useMemo, useState, useEffect, useCallback } from "react"
 import * as Y from "yjs"
 import { SocketIOProvider } from "y-socket.io"
 import { useParams, useNavigate } from "react-router-dom"
-import { Users, Code2, Copy, Check, ArrowLeft, Play, Terminal, Loader2 } from "lucide-react"
+import {
+  Users, Code2, Copy, Check, ArrowLeft, Play,
+  Terminal, Loader2, Trash2, ChevronDown, Circle
+} from "lucide-react"
 import { useUser } from "@clerk/clerk-react"
 
-// A preset list of aesthetic colors for remote cursors
 const COLORS = [
-  "#ef4444", "#f97316", "#f59e0b", "#10b981", 
+  "#ef4444", "#f97316", "#f59e0b", "#10b981",
   "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e"
 ]
 
 const LANGUAGES = [
-  { id: 63, label: "JavaScript", monaco: "javascript" },
-  { id: 71, label: "Python", monaco: "python" },
-  { id: 54, label: "C++", monaco: "cpp" },
-  { id: 62, label: "Java", monaco: "java" },
+  { id: 63, label: "JavaScript", monaco: "javascript", icon: "JS" },
+  { id: 71, label: "Python",     monaco: "python",     icon: "Py" },
+  { id: 54, label: "C++",        monaco: "cpp",         icon: "C+" },
+  { id: 62, label: "Java",       monaco: "java",        icon: "Jv" },
 ]
+
+const STATUS_STYLE = {
+  "Accepted":              "text-green-400 bg-green-500/10",
+  "Wrong Answer":          "text-red-400 bg-red-500/10",
+  "Time Limit Exceeded":   "text-orange-400 bg-orange-500/10",
+  "Runtime Error (NZEC)":  "text-red-400 bg-red-500/10",
+  "Compilation Error":     "text-yellow-400 bg-yellow-500/10",
+  "Internal Error":        "text-red-400 bg-red-500/10",
+}
+
+function getInitials(name = "") {
+  return name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) || "?"
+}
 
 export default function Room() {
   const { roomId } = useParams()
   const navigate = useNavigate()
   const { user, isLoaded } = useUser()
-  
-  const editorRef = useRef(null)
-  const bindingRef = useRef(null)
-  const providerRef = useRef(null)
-  
-  // Try to use Clerk's name, otherwise fallback to sessionStorage
-  const [username, setUsername] = useState(() => sessionStorage.getItem("username") || "")
-  const [tempUsername, setTempUsername] = useState("")
-  const [users, setUsers] = useState([])
-  const [copied, setCopied] = useState(false)
-  const [editorReady, setEditorReady] = useState(false)
-  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0])
-  const [stdin, setStdin] = useState("")
-  const [output, setOutput] = useState("")
-  const [executionMeta, setExecutionMeta] = useState(null)
-  const [isRunning, setIsRunning] = useState(false)
 
-  // Automatically update the username if the user logs in via Clerk
+  const editorRef    = useRef(null)
+  const bindingRef   = useRef(null)
+  const providerRef  = useRef(null)
+
+  const [username, setUsername]         = useState(() => sessionStorage.getItem("username") || "")
+  const [tempUsername, setTempUsername] = useState("")
+  const [users, setUsers]               = useState([])
+  const [copied, setCopied]             = useState(false)
+  const [editorReady, setEditorReady]   = useState(false)
+  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0])
+  const [workspaceName, setWorkspaceName] = useState("Untitled Workspace")
+
+  const [stdin, setStdin]               = useState("")
+  const [output, setOutput]             = useState("")
+  const [executionMeta, setExecutionMeta] = useState(null)
+  const [isRunning, setIsRunning]       = useState(false)
+
+  // Load workspace metadata (name)
+  useEffect(() => {
+    fetch(`http://localhost:3000/api/workspaces/by-room/${roomId}`)
+      .then(r => r.json())
+      .then(data => { if (data.success && data.workspace?.name) setWorkspaceName(data.workspace.name) })
+      .catch(() => {})
+  }, [roomId])
+
+  // Auto-fill username from Clerk
   useEffect(() => {
     if (isLoaded && user) {
       const name = user.firstName || user.username || "Authenticated User"
@@ -50,16 +74,13 @@ export default function Room() {
     }
   }, [isLoaded, user])
 
-  // Initialize Yjs Document exactly once
-  const ydoc = useMemo(() => new Y.Doc(), [])
-  const yText = useMemo(() => ydoc.getText("monaco"), [ydoc])
-  
-  // Generate a random color for this user exactly once
+  const ydoc      = useMemo(() => new Y.Doc(), [])
+  const yText     = useMemo(() => ydoc.getText("monaco"), [ydoc])
   const userColor = useMemo(() => COLORS[Math.floor(Math.random() * COLORS.length)], [])
 
   const handleJoin = (e) => {
     e.preventDefault()
-    if(tempUsername.trim()) {
+    if (tempUsername.trim()) {
       sessionStorage.setItem("username", tempUsername)
       setUsername(tempUsername)
     }
@@ -73,12 +94,12 @@ export default function Room() {
 
   const handleMount = (editor) => {
     editorRef.current = editor
-    setEditorReady(true) // Signals that Monaco is ready to be bound
+    setEditorReady(true)
   }
 
   const handleLanguageChange = (e) => {
-    const nextLanguage = LANGUAGES.find((language) => language.id === Number(e.target.value))
-    if (nextLanguage) setSelectedLanguage(nextLanguage)
+    const next = LANGUAGES.find(l => l.id === Number(e.target.value))
+    if (next) setSelectedLanguage(next)
   }
 
   const handleRunCode = async () => {
@@ -86,27 +107,18 @@ export default function Room() {
 
     const sourceCode = editorRef.current.getValue()
     setIsRunning(true)
-    setOutput("Running...")
+    setOutput("")
     setExecutionMeta(null)
 
     try {
       const response = await fetch("http://localhost:3000/api/execution/run", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          sourceCode,
-          languageId: selectedLanguage.id,
-          stdin,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceCode, languageId: selectedLanguage.id, stdin }),
       })
 
       const data = await response.json()
-
-      if (!response.ok || !data.success) {
-        throw new Error(data.message || data.error || "Code execution failed")
-      }
+      if (!response.ok || !data.success) throw new Error(data.message || data.error || "Execution failed")
 
       const result = data.result
       const visibleOutput =
@@ -124,45 +136,37 @@ export default function Room() {
         memory: result.memory,
       })
     } catch (error) {
-      setOutput(error.message || "Code execution failed")
+      setOutput(`Error: ${error.message}`)
+      setExecutionMeta({ status: "Error" })
     } finally {
       setIsRunning(false)
     }
   }
 
   useEffect(() => {
-    // Only connect when both the username is set AND the editor is mounted
     if (username && editorReady) {
-      // Connect to Socket.io backend explicitly (port 3000)
-      const provider = new SocketIOProvider("http://localhost:3000", roomId, ydoc, {
-        autoConnect: true,
-      })
+      const provider = new SocketIOProvider("http://localhost:3000", roomId, ydoc, { autoConnect: true })
       providerRef.current = provider
 
-      // PHASE 2: Cursor & Presence Awareness
-      // We set the local state. y-monaco uses `name` and `color` fields for remote cursors.
-      provider.awareness.setLocalStateField("user", { 
-        name: username, // For the cursor tooltip
-        username: username, // For our sidebar list
-        color: userColor // For the cursor color
+      provider.awareness.setLocalStateField("user", {
+        name: username,
+        username: username,
+        color: userColor,
       })
 
-      // Track active collaborators for the sidebar
       const updateUsers = () => {
         const states = Array.from(provider.awareness.getStates().values())
-        setUsers(states.filter(state => state.user && state.user.username).map(state => state.user))
+        setUsers(states.filter(s => s.user?.username).map(s => s.user))
       }
-      
-      provider.awareness.on("change", updateUsers)
-      updateUsers() // Fetch initial list
 
-      // PHASE 2: Bind Monaco to Yjs + Awareness
-      // By passing provider.awareness as the 4th argument, we enable remote cursors!
+      provider.awareness.on("change", updateUsers)
+      updateUsers()
+
       bindingRef.current = new MonacoBinding(
         yText,
         editorRef.current.getModel(),
         new Set([editorRef.current]),
-        provider.awareness 
+        provider.awareness
       )
 
       function handleBeforeUnload() {
@@ -170,119 +174,166 @@ export default function Room() {
       }
       window.addEventListener("beforeunload", handleBeforeUnload)
 
-      // Cleanup function on dismount
       return () => {
-        if(bindingRef.current) bindingRef.current.destroy()
+        if (bindingRef.current) bindingRef.current.destroy()
         provider.disconnect()
         window.removeEventListener("beforeunload", handleBeforeUnload)
       }
     }
   }, [username, editorReady, roomId, ydoc, yText, userColor])
 
-  // Login Screen if no username
+  // ── Join screen ──
   if (!username) {
     return (
-      <main className="h-screen w-full bg-gray-950 flex flex-col items-center justify-center p-4">
-        <div className="max-w-md w-full bg-neutral-900 rounded-2xl p-8 border border-neutral-800 shadow-xl text-center">
-          <Code2 className="text-amber-500 w-12 h-12 mx-auto mb-4" />
-          <h2 className="text-2xl font-bold text-white mb-2">Join Workspace</h2>
-          <p className="text-neutral-400 mb-6 text-sm">Enter a username to collaborate in this room.</p>
-          <form onSubmit={handleJoin} className="flex flex-col gap-4">
-            <input
-              type="text"
-              placeholder="Your name"
-              required
-              className="w-full p-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:border-amber-500 transition-colors"
-              value={tempUsername}
-              onChange={(e) => setTempUsername(e.target.value)}
-            />
-            <button
-              type="submit"
-              className="w-full p-3 rounded-lg bg-amber-500 text-gray-950 font-bold hover:bg-amber-400 transition-colors"
-            >
-              Enter Room
-            </button>
-          </form>
+      <main className="h-screen w-full bg-[#09090b] flex flex-col items-center justify-center p-4">
+        {/* Ambient */}
+        <div className="fixed inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-amber-500/5 blur-[120px] rounded-full" />
+        </div>
+        <div className="relative max-w-sm w-full">
+          <div className="text-center mb-8">
+            <div className="inline-flex p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 mb-4">
+              <Code2 className="text-amber-400 w-8 h-8" />
+            </div>
+            <h2 className="text-2xl font-bold text-white">Join Workspace</h2>
+            <p className="text-neutral-400 text-sm mt-2">Enter your display name to start collaborating</p>
+          </div>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl">
+            <div className="text-xs text-neutral-500 font-mono bg-neutral-800 px-3 py-2 rounded-lg mb-4 truncate">
+              Room: {roomId}
+            </div>
+            <form onSubmit={handleJoin} className="flex flex-col gap-3">
+              <input
+                type="text"
+                placeholder="Your display name"
+                required
+                autoFocus
+                className="w-full px-3 py-3 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-500 text-sm"
+                value={tempUsername}
+                onChange={e => setTempUsername(e.target.value)}
+              />
+              <button
+                type="submit"
+                className="w-full py-3 rounded-lg bg-amber-500 text-gray-950 font-bold text-sm hover:bg-amber-400 transition-colors"
+              >
+                Enter Room
+              </button>
+            </form>
+          </div>
         </div>
       </main>
     )
   }
 
-  // Main Editor View
+  const statusStyle = STATUS_STYLE[executionMeta?.status] || "text-neutral-400 bg-neutral-800"
+
+  // ── Main Editor View ──
   return (
-    <main className="h-screen w-full flex bg-gray-950 text-white font-sans overflow-hidden">
-      {/* Sidebar - Collaborators */}
-      <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 transition-all">
-        <div className="p-4 border-b border-neutral-800 flex items-center gap-3">
-          <button onClick={() => navigate("/")} className="text-neutral-400 hover:text-white transition">
-            <ArrowLeft className="w-5 h-5" />
+    <main className="h-screen w-full flex bg-[#09090b] text-white font-sans overflow-hidden">
+
+      {/* ── Sidebar ── */}
+      <aside className="w-60 bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0">
+
+        {/* Logo + back */}
+        <div className="px-4 py-3 border-b border-neutral-800 flex items-center gap-2.5">
+          <button
+            onClick={() => navigate("/")}
+            className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
+            title="Back to Home"
+          >
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div className="flex items-center gap-2">
-            <Code2 className="text-amber-500 w-6 h-6" />
-            <h1 className="font-bold text-lg tracking-tight">CodeWeave</h1>
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+            <Code2 className="text-amber-400 w-5 h-5 shrink-0" />
+            <span className="font-bold text-sm tracking-tight truncate">{workspaceName}</span>
           </div>
         </div>
-        
-        <div className="p-4 flex-1 overflow-y-auto">
-          <div className="flex items-center gap-2 text-neutral-400 mb-4 text-xs font-bold uppercase tracking-wider">
-            <Users className="w-4 h-4" />
-            <span>Collaborators ({users.length})</span>
+
+        {/* Room ID */}
+        <div className="px-4 py-2.5 border-b border-neutral-800">
+          <p className="text-xs text-neutral-500 mb-1 font-medium uppercase tracking-wider">Room</p>
+          <p className="text-xs text-neutral-300 font-mono truncate">{roomId}</p>
+        </div>
+
+        {/* Collaborators */}
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="flex items-center gap-1.5 text-neutral-500 mb-3 text-xs font-semibold uppercase tracking-wider">
+            <Users className="w-3.5 h-3.5" />
+            <span>Collaborators</span>
+            <span className="ml-auto bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded-md">{users.length}</span>
           </div>
-          <ul className="space-y-2">
-            {users.map((u, index) => (
-              <li key={index} className="flex items-center gap-3 p-2 rounded-md hover:bg-neutral-800 transition-colors">
-                <div 
-                  className="w-3 h-3 rounded-full" 
-                  style={{ backgroundColor: u.color || '#ccc' }}
-                />
-                <span className="text-sm font-medium">{u.username}</span>
-                {u.username === username && <span className="text-xs text-neutral-500 ml-auto">(You)</span>}
+
+          <ul className="space-y-1.5">
+            {users.map((u, idx) => (
+              <li key={idx} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-neutral-800 transition-colors">
+                {/* Avatar initials */}
+                <div
+                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                  style={{ backgroundColor: u.color || "#888" }}
+                >
+                  {getInitials(u.username)}
+                </div>
+                <span className="text-sm font-medium truncate flex-1">{u.username}</span>
+                {u.username === username && (
+                  <span className="text-xs text-neutral-600">you</span>
+                )}
               </li>
             ))}
           </ul>
         </div>
 
+        {/* Copy link button */}
         <div className="p-4 border-t border-neutral-800">
           <button
             onClick={copyLink}
-            className="w-full py-2 px-4 bg-neutral-800 hover:bg-neutral-700 text-sm font-medium rounded-md flex items-center justify-center gap-2 transition-colors border border-neutral-700"
+            className="w-full py-2 px-3 bg-neutral-800 hover:bg-neutral-700 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors border border-neutral-700"
           >
-            {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-            {copied ? "Copied!" : "Copy Room Link"}
+            {copied
+              ? <><Check className="w-3.5 h-3.5 text-green-400" /> <span className="text-green-400">Copied!</span></>
+              : <><Copy className="w-3.5 h-3.5" /> Copy Room Link</>
+            }
           </button>
         </div>
       </aside>
 
-      {/* Editor Section */}
+      {/* ── Editor Section ── */}
       <section className="flex-1 flex flex-col min-w-0">
-        <header className="h-14 bg-neutral-900 border-b border-neutral-800 flex items-center px-4 justify-between shrink-0">
-           <div className="text-sm text-neutral-400 flex items-center gap-2 bg-neutral-800 px-3 py-1.5 rounded-md border border-neutral-700">
-              <span className="font-mono">{roomId}</span>
-           </div>
-           <div className="flex items-center gap-3">
-              <select
-                value={selectedLanguage.id}
-                onChange={handleLanguageChange}
-                className="h-9 rounded-md bg-neutral-800 border border-neutral-700 px-3 text-sm text-white focus:outline-none focus:border-amber-500"
-              >
-                {LANGUAGES.map((language) => (
-                  <option key={language.id} value={language.id}>
-                    {language.label}
-                  </option>
-                ))}
-              </select>
-              <button
-                onClick={handleRunCode}
-                disabled={isRunning || !editorReady}
-                className="h-9 px-4 rounded-md bg-amber-500 text-gray-950 font-bold text-sm hover:bg-amber-400 disabled:opacity-60 disabled:cursor-not-allowed transition-colors flex items-center gap-2"
-              >
-                {isRunning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-                {isRunning ? "Running" : "Run Code"}
-              </button>
-           </div>
+
+        {/* Toolbar */}
+        <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center px-4 gap-3 shrink-0">
+          {/* Language select */}
+          <div className="relative">
+            <select
+              value={selectedLanguage.id}
+              onChange={handleLanguageChange}
+              className="h-8 pl-3 pr-8 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-white font-medium focus:outline-none focus:border-amber-500 appearance-none cursor-pointer"
+            >
+              {LANGUAGES.map(l => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </select>
+            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
+          </div>
+
+          <div className="flex-1" />
+
+          {/* Run button */}
+          <button
+            onClick={handleRunCode}
+            disabled={isRunning || !editorReady}
+            className="h-8 px-4 rounded-md bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+          >
+            {isRunning
+              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Running…</>
+              : <><Play className="w-3.5 h-3.5" /> Run Code</>
+            }
+          </button>
         </header>
 
-        <div className="flex-1 w-full min-h-0 flex bg-[#1e1e1e]">
+        {/* Editor + I/O panel */}
+        <div className="flex-1 w-full min-h-0 flex">
+
+          {/* Monaco editor */}
           <div className="flex-1 min-w-0">
             <Editor
               height="100%"
@@ -295,41 +346,71 @@ export default function Room() {
                 minimap: { enabled: false },
                 padding: { top: 16 },
                 fontSize: 14,
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                fontLigatures: true,
+                scrollBeyondLastLine: false,
               }}
             />
           </div>
 
+          {/* I/O panel */}
           <aside className="w-80 xl:w-96 bg-neutral-950 border-l border-neutral-800 flex flex-col shrink-0">
-            <div className="h-1/2 min-h-0 border-b border-neutral-800 flex flex-col">
-              <div className="h-11 px-4 border-b border-neutral-800 flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                <Terminal className="w-4 h-4 text-amber-500" />
-                Input
+
+            {/* Input */}
+            <div className="h-2/5 min-h-0 border-b border-neutral-800 flex flex-col">
+              <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
+                <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Stdin</span>
               </div>
               <textarea
                 value={stdin}
-                onChange={(e) => setStdin(e.target.value)}
+                onChange={e => setStdin(e.target.value)}
                 spellCheck="false"
-                placeholder="Program input goes here..."
-                className="flex-1 min-h-0 w-full resize-none bg-neutral-950 p-4 font-mono text-sm text-neutral-100 placeholder:text-neutral-600 focus:outline-none"
+                placeholder="Program input goes here…"
+                className="flex-1 min-h-0 w-full resize-none bg-neutral-950 p-4 font-mono text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none leading-relaxed"
               />
             </div>
 
-            <div className="h-1/2 min-h-0 flex flex-col">
-              <div className="h-11 px-4 border-b border-neutral-800 flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-sm font-semibold text-neutral-200">
-                  <Terminal className="w-4 h-4 text-amber-500" />
-                  Output
-                </div>
+            {/* Output */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
+                <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Output</span>
+
+                <div className="flex-1" />
+
+                {/* Execution meta */}
                 {executionMeta && (
-                  <div className="text-xs text-neutral-500 truncate">
-                    {executionMeta.status}
-                    {executionMeta.time ? ` | ${executionMeta.time}s` : ""}
-                    {executionMeta.memory ? ` | ${executionMeta.memory} KB` : ""}
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyle}`}>
+                      {executionMeta.status}
+                    </span>
+                    {executionMeta.time && (
+                      <span className="text-xs text-neutral-500">{executionMeta.time}s</span>
+                    )}
+                    {executionMeta.memory && (
+                      <span className="text-xs text-neutral-500">{executionMeta.memory}KB</span>
+                    )}
                   </div>
                 )}
+
+                {/* Clear button */}
+                {output && (
+                  <button
+                    onClick={() => { setOutput(""); setExecutionMeta(null); }}
+                    className="p-1 rounded text-neutral-600 hover:text-neutral-400 transition"
+                    title="Clear output"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
-              <pre className="flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-sm text-neutral-100">
-                {output || "Run code to see output here."}
+
+              <pre className="flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs text-neutral-100 leading-relaxed">
+                {isRunning
+                  ? <span className="text-amber-400 animate-pulse">● Running…</span>
+                  : output || <span className="text-neutral-600">Run code to see output here.</span>
+                }
               </pre>
             </div>
           </aside>

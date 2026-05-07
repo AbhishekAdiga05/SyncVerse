@@ -1,132 +1,483 @@
 # CodeWeave: Comprehensive Learning & Interview Guide
 
 > [!NOTE]
-> This is a living document. As we build out each phase of CodeWeave, this guide will be updated with the core concepts, code breakdowns, and technical interview talking points for the new features.
+> This is a living document. Updated after every major phase of development. Use this to confidently explain every architectural decision in an interview setting.
+
+---
+
+## 🗺️ TECH STACK OVERVIEW
+
+| Layer | Technology | Why |
+|---|---|---|
+| **Frontend** | React + Vite | Fast HMR dev server, component-based UI |
+| **Editor** | Monaco Editor (`@monaco-editor/react`) | Same engine as VS Code — syntax highlighting, full IDE UX |
+| **Real-time sync** | Yjs + y-socket.io | CRDT-based peer-to-peer conflict resolution |
+| **Backend** | Node.js + Express | Non-blocking I/O, ideal for WebSocket-heavy apps |
+| **WebSockets** | Socket.io | Reliable duplex communication with auto-reconnect |
+| **Database** | MongoDB + Mongoose | Flexible schema for document-style workspace storage |
+| **Auth** | Clerk | Enterprise-grade Identity Provider; removes auth liability |
+| **Code Execution** | Judge0 CE Cloud API | Sandboxed multi-language execution; no server infra needed |
+| **Architecture** | MVC (Model-View-Controller) | Industry-standard separation of concerns |
 
 ---
 
 ## 🟢 PHASE 1 & 2: Dynamic Routing & Collaboration Experience
 
-To confidently defend the real-time collaboration features of your project, you need to master three core concepts: **Dynamic Routing**, **CRDTs (Yjs)**, and **The Awareness Protocol**.
+To confidently defend the real-time collaboration features, master three core concepts: **Dynamic Routing**, **CRDTs (Yjs)**, and **The Awareness Protocol**.
 
 ### Concept 1: Dynamic Routing (React Router)
-**The Problem:** Your original app connected all users to a single, global room because the backend and frontend didn't have a way to differentiate sessions.
-**The Solution:** We implemented React Router to map distinct URLs to different workspaces.
 
-* **How it works:** In `Room.jsx`, we use the hook `const { roomId } = useParams()`. This extracts the dynamic ID from the URL (e.g., `/room/12345`). We then pass that `roomId` directly into our Socket.io provider as the document name. The backend automatically isolates real-time broadcasting to only the users connected to that specific document name.
-* **Interview Question:** *"How did you handle multiple separate workspaces simultaneously?"*
-* **Your Answer:** *"I used React Router to create dynamic URL parameters (`/room/:id`). On the client side, I extract that ID and use it as the namespace document name for my WebSocket connection. This ensures the backend automatically isolates real-time broadcasting to only the users connected to that specific URL without needing complex backend room management."*
+**The Problem:** The original app connected all users to a single global room because the backend and frontend had no way to differentiate sessions.
+
+**The Solution:** React Router maps distinct URLs to different workspaces.
+
+```jsx
+// Room.jsx
+const { roomId } = useParams() // Extracts ID from /room/:id
+const provider = new SocketIOProvider("http://localhost:3000", roomId, ydoc)
+// roomId becomes the y-socket.io document namespace — auto-isolates the room
+```
+
+**How it works:** `useParams()` extracts the dynamic segment from the URL (e.g., `/room/abc123`). That `roomId` is passed as the document name into `SocketIOProvider`. The backend automatically isolates broadcasting to only the users connected to that exact document name — no backend room management code required.
+
+> **Interview Q:** *"How did you handle multiple separate workspaces simultaneously?"*
+>
+> **Your Answer:** *"I used React Router to create dynamic URL parameters (`/room/:id`). On the client, I extract that ID with `useParams()` and use it as the y-socket.io document namespace. The backend automatically isolates real-time broadcasting to only users sharing that URL — without needing any custom backend room management logic."*
+
+---
 
 ### Concept 2: CRDTs and Yjs (The Brain of the Editor)
-**The Problem:** If two users edit the exact same line of code at the exact same millisecond, how do you prevent them from overwriting each other or crashing the document?
-**The Solution:** **Conflict-free Replicated Data Types (CRDTs)** via the `Yjs` library.
 
-* **How it works:** Instead of sending whole strings of text back and forth, Yjs breaks the document down into tiny individual character insertions and deletions. Each operation is assigned a unique logical timestamp. Yjs uses mathematical algorithms to merge these operations perfectly without any central server logic. If User A types "Hello" and User B types "World", Yjs merges them perfectly into "HelloWorld".
-* **Interview Question:** *"How did you prevent race conditions and merge conflicts when multiple users type simultaneously?"*
-* **Your Answer:** *"I implemented a CRDT architecture using Yjs. Instead of operational transformation (OT) which requires a heavy central server to resolve conflicts, CRDTs allow peer-to-peer conflict resolution. Every keystroke is treated as an immutable state update, mathematically guaranteeing that all clients eventually reach the exact same document state, regardless of network latency."*
+**The Problem:** If two users edit the exact same character position simultaneously, how do you prevent data loss or document corruption?
+
+**The Solution:** **Conflict-free Replicated Data Types (CRDTs)** via Yjs.
+
+```jsx
+// Room.jsx — The three core Yjs primitives
+const ydoc = useMemo(() => new Y.Doc(), [])         // The shared document
+const yText = useMemo(() => ydoc.getText("monaco"), [ydoc]) // The shared text type
+
+// MonacoBinding bridges Monaco's internal model with the Yjs CRDT
+new MonacoBinding(yText, editorRef.current.getModel(), new Set([editorRef.current]), provider.awareness)
+```
+
+**How it works:** Yjs doesn't send raw strings — it tracks every **character insertion and deletion as an immutable, uniquely-timestamped operation**. When two users type at the same position, Yjs's mathematical algorithms merge both operations deterministically. The result is identical on every client, regardless of which update arrived first or network latency.
+
+**Key insight:** This is fundamentally different from **Operational Transformation (OT)** used by Google Docs. OT requires a central server to sequence and transform operations. CRDTs resolve conflicts peer-to-peer, making the system more resilient and horizontally scalable.
+
+> **Interview Q:** *"How did you prevent race conditions and merge conflicts when multiple users type simultaneously?"*
+>
+> **Your Answer:** *"I implemented a CRDT architecture using Yjs. Unlike Operational Transformation — which requires a central server to serialize and transform every operation — CRDTs treat each keystroke as an immutable, uniquely-identified state update. Yjs mathematically guarantees that all clients eventually converge to the exact same document state, regardless of network latency or the order updates are received."*
+
+---
 
 ### Concept 3: The Awareness Protocol (Cursors & Presence)
-**The Problem:** We need to show where a user's mouse is and what their name is, but we *don't* want to save mouse coordinates into the actual code document permanently.
-**The Solution:** The **Yjs Awareness Protocol**.
 
-* **How it works:** Yjs has a separate engine called "Awareness" built specifically for ephemeral (temporary) data. We package the username and a random hex color into a JSON object and throw it into the local awareness state. The `MonacoBinding` automatically listens to this state and draws the colored cursors on the screen using CSS tooltips.
-* **Interview Question:** *"How did you implement the real-time remote cursors?"*
-* **Your Answer:** *"I utilized the Yjs Awareness protocol. While the actual code relies on CRDTs for persistent syncing, the remote cursors, selections, and user colors are ephemeral state. I injected custom user metadata into the awareness state, which the Monaco Editor binding continuously polls to render custom CSS tooltips showing where other users are currently focused."*
+**The Problem:** We need to broadcast real-time cursor positions and usernames, but we *don't* want to store mouse coordinates permanently in the CRDT document.
+
+**The Solution:** The **Yjs Awareness Protocol** — a separate ephemeral (non-persisted) pub/sub layer.
+
+```jsx
+// Room.jsx — Injecting ephemeral presence metadata
+provider.awareness.setLocalStateField("user", {
+  name: username,      // Used by MonacoBinding to render cursor tooltip
+  username: username,  // Used by our sidebar collaborator list
+  color: userColor     // Unique hex color per session
+})
+
+// Listening to changes for the sidebar
+provider.awareness.on("change", () => {
+  const states = Array.from(provider.awareness.getStates().values())
+  setUsers(states.filter(s => s.user).map(s => s.user))
+})
+```
+
+**How it works:** Awareness data is **broadcast to all peers but never written to the CRDT document**. When a user disconnects, their awareness state is automatically garbage-collected. `MonacoBinding` reads the `name` and `color` fields from awareness to render colored cursor decorations and tooltips natively inside Monaco.
+
+> **Interview Q:** *"How did you implement real-time remote cursors?"*
+>
+> **Your Answer:** *"I used the Yjs Awareness protocol. The actual code changes are synced via CRDTs for permanent persistence, but cursor positions and user presence are ephemeral — they shouldn't persist after a user leaves. I injected user metadata (name, color) into the Awareness state, which the MonacoBinding library continuously polls to render live cursor decorations. When a user disconnects, their cursor is automatically removed."*
 
 ---
 
 ## 🟢 PHASE 3: Persistent Workspaces (MongoDB)
 
-To make workspaces persistent without flooding our database with requests, we implemented a sophisticated server-side strategy intercepting Yjs document events.
+### Concept 4: Server-Side Persistence & Lifecycle Hooks
 
-### Concept 4: Server-Side Persistence & Hooks
-**The Problem:** React clients could manually send `fetch()` requests to save their code, but this leads to desynchronized data, redundant network calls, and poor performance.
-**The Solution:** We made the Node.js server the single source of truth by hooking directly into the `y-socket.io` lifecycle events (`document-loaded` and `document-update`).
+**The Problem:** Frontend clients sending `fetch()` to save their code leads to race conditions, redundant writes, and stale data when multiple users are editing simultaneously.
 
-* **How it works:** We don't write any database logic on the frontend. Instead, the backend listens to WebSocket events. When a user creates a room, `document-loaded` fires and the server fetches code from MongoDB. When users type, `document-update` fires, allowing the server to save the exact Yjs state silently in the background. 
-* **Interview Question:** *"How did you persist the real-time document state to your database?"*
-* **Your Answer:** *"Instead of relying on the client to send HTTP requests, I built a completely server-driven persistence layer. By hooking into the Yjs WebSocket lifecycle events, my Node.js server intercepts document updates and saves them directly to MongoDB. This keeps the frontend incredibly thin and guarantees that the database always holds the most accurate, conflict-free state."*
+**The Solution:** Making the **Node.js server the single source of truth** by hooking into `y-socket.io` lifecycle events.
+
+```js
+// yjs.socket.js — Server intercepts the Yjs document lifecycle
+ysocketio.on("document-loaded", async (doc) => {
+  const workspace = await Workspace.findOne({ roomId: doc.name })
+  if (workspace?.content) {
+    // Server overwrites whatever the client prematurely initialized
+    doc.getText("monaco").insert(0, workspace.content)
+  }
+})
+
+ysocketio.on("document-update", (doc) => {
+  // Debounced — only writes after 2s of inactivity
+  debouncedSave(doc.name, doc.getText("monaco").toString())
+})
+```
+
+> **Interview Q:** *"How did you persist the real-time document state to your database?"*
+>
+> **Your Answer:** *"Instead of relying on the client to send HTTP requests, I built a completely server-driven persistence layer. I hooked into the y-socket.io lifecycle events — `document-loaded` fetches the last-saved state from MongoDB and injects it into the CRDT, and `document-update` triggers a debounced save. This keeps the frontend completely thin and guarantees the database always holds the authoritative, conflict-free document state."*
+
+---
 
 ### Concept 5: Debouncing Database Writes
-**The Problem:** If 5 users type at 80 words per minute, the server would execute hundreds of MongoDB `findOneAndUpdate` queries per second, quickly crashing the database.
-**The Solution:** A Debounce Timer mechanism.
 
-* **How it works:** Inside the `document-update` hook, we use a `setTimeout`. Every single keystroke resets a 2-second timer. The server *only* executes the MongoDB query if the entire room stops typing for a full 2 seconds.
-* **Interview Question:** *"How did you prevent your database from being overwhelmed by the high frequency of real-time edits?"*
-* **Your Answer:** *"I implemented a debounce mechanism on the server. Instead of writing to the database on every CRDT operation, I track updates in memory using a timeout. The server only commits the transaction to MongoDB after a period of inactivity (e.g., 2 seconds). This reduces database writes by over 99% while still ensuring data safety."*
+**The Problem:** 5 users typing at 80 WPM generates hundreds of `document-update` events per second. Writing to MongoDB on every event would instantly overwhelm the database.
+
+**The Solution:** A server-side **debounce timer** — only commit after a period of inactivity.
+
+```js
+// In-memory map of debounce timers per room
+const saveTimers = {}
+
+const debouncedSave = (roomId, content) => {
+  clearTimeout(saveTimers[roomId])
+  saveTimers[roomId] = setTimeout(async () => {
+    await Workspace.findOneAndUpdate({ roomId }, { content }, { upsert: true })
+    console.log(`[DB] Saved room: ${roomId}`)
+  }, 2000) // 2 seconds of inactivity before committing
+}
+```
+
+**The result:** Instead of potentially thousands of writes per minute, you get at most **one write per 2-second idle window** — a reduction of **over 99%** in database operations.
+
+> **Interview Q:** *"How did you prevent your database from being overwhelmed by high-frequency real-time edits?"*
+>
+> **Your Answer:** *"I implemented a server-side debounce mechanism. The `document-update` event fires on every CRDT operation, but instead of writing to MongoDB immediately, I store a `setTimeout` reference per room in memory. Every new update resets that timer. The actual database write only executes after 2 full seconds of inactivity. This reduces database writes by over 99% while still guaranteeing data safety."*
+
+---
 
 ### Concept 6: Distributed System Race Conditions
-**The Problem:** When loading a room, the React client automatically mounts the Monaco editor with a default placeholder text. If the client syncs this default text before the server finishes loading the real code from MongoDB, the real code gets overwritten or ignored.
-**The Solution:** Authoritative Server Override.
 
-* **How it works:** In our `document-loaded` hook, once the server retrieves the document from MongoDB, it forcefully clears whatever text the client might have prematurely injected and applies the database string.
-* **Interview Question:** *"Did you encounter any race conditions between the database load time and client synchronization?"*
-* **Your Answer:** *"Yes. Because WebSockets connect faster than MongoDB can query, clients would sometimes initialize the CRDT document with their editor's default text, making the server think the document was no longer empty. I solved this by treating the server's database read as the absolute source of truth—once the query resolves, the server forcefully clears any prematurely injected client data and propagates the authoritative database state."*
+**The Problem:** The React client mounts Monaco with a default `"// Start coding..."` placeholder. If the client syncs this placeholder into the CRDT *before* the server finishes querying MongoDB, the real saved code gets ignored or overwritten.
+
+**The Solution:** **Authoritative Server Override** — the server's database read always wins.
+
+**How it works:** In the `document-loaded` hook, once the server retrieves the stored content, it calls `doc.transact()` to atomically clear the CRDT and insert the authoritative database content. Any placeholder the client injected is wiped out.
+
+> **Interview Q:** *"Did you encounter any race conditions in the project?"*
+>
+> **Your Answer:** *"Yes — WebSockets connect faster than MongoDB can query, so the CRDT would sometimes get initialized with the editor's default placeholder text before the server finished loading the real content. I solved this with an authoritative server override pattern: the `document-loaded` hook uses a transactional CRDT update to forcefully clear any prematurely injected client content and replace it with the database state. The server is the absolute source of truth."*
+
+---
+
+## 🟢 PHASE 4: Code Execution Engine (Judge0 CE)
+
+This was the most systems-intensive phase, involving diagnosing a deep infrastructure incompatibility and engineering a production-grade workaround.
+
+### Concept 9: Sandboxed Multi-Language Code Execution
+
+**The Problem:** Executing user-submitted code on a server is extremely dangerous. Malicious code could read files, make network requests, or crash the process. You need a sandboxed execution environment.
+
+**The Solution:** **Judge0 CE** — an open-source, sandboxed code execution system. We call its cloud-hosted API instead of running it ourselves.
+
+**Architecture:**
+```
+[React Client]
+     │
+     │  POST /api/execution/run
+     │  { sourceCode, languageId, stdin }
+     ▼
+[Express Server] ── execution.controller.js
+     │
+     │  judge0.service.js
+     │  POST https://ce.judge0.com/submissions?wait=true
+     ▼
+[Judge0 CE Cloud]  ← Sandboxed execution environment
+     │
+     │  { stdout, stderr, compile_output, status, time, memory }
+     ▼
+[Express Server] → [React Client] → Renders in Output panel
+```
+
+**The Judge0 flow:**
+1. Source code is **Base64-encoded** before transmission (avoids JSON escaping bugs with special characters)
+2. Submission is sent to Judge0 with `wait=true` — the request blocks until execution completes
+3. Judge0 returns `stdout`, `stderr`, `compile_output`, execution `time`, and `memory` usage
+4. The server Base64-decodes the results and returns clean JSON
+
+```js
+// judge0.service.js — The core execution bridge
+export const runCodeWithJudge0 = async ({ sourceCode, languageId, stdin = "" }) => {
+  const judge0Url = process.env.JUDGE0_API_URL || "https://ce.judge0.com"
+
+  const response = await fetch(`${judge0Url}/submissions?base64_encoded=true&wait=true`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      source_code: encodeBase64(sourceCode),
+      language_id: languageId,  // e.g., 63 = JavaScript, 71 = Python
+      stdin: encodeBase64(stdin),
+    }),
+  })
+
+  const result = await response.json()
+  return {
+    stdout: decodeBase64(result.stdout),
+    stderr: decodeBase64(result.stderr),
+    compileOutput: decodeBase64(result.compile_output),
+    status: result.status,    // { id: 3, description: "Accepted" }
+    time: result.time,        // e.g., "0.024" (seconds)
+    memory: result.memory,    // e.g., 7340 (KB)
+  }
+}
+```
+
+**Supported languages (Judge0 CE language IDs):**
+| Language | ID | Monaco Mode |
+|---|---|---|
+| JavaScript (Node.js 18) | 63 | `javascript` |
+| Python 3 | 71 | `python` |
+| C++ (GCC 10) | 54 | `cpp` |
+| Java 15 | 62 | `java` |
+
+> **Interview Q:** *"How did you implement secure, multi-language code execution?"*
+>
+> **Your Answer:** *"I integrated with the Judge0 CE API, an open-source sandboxed code execution system. User code is Base64-encoded on the server and submitted to Judge0's cloud instance. Judge0 runs the code inside an `isolate` sandbox — a Linux namespace that restricts filesystem, network, and process access. The API returns structured output including `stdout`, `stderr`, compile errors, execution time, and memory usage. This gives users a full IDE-like execution experience without any security risk to my server."*
+
+---
+
+### Concept 10: Infrastructure Debugging — cgroup v2 Incompatibility
+
+This is a **premium interview talking point** — it demonstrates systems-level debugging skills most candidates don't have.
+
+**The Problem:** Judge0 was deployed locally via Docker Desktop on Windows, but every code execution returned:
+```
+"message": "No such file or directory @ rb_sysopen - /box/script.js",
+"status": { "id": 13, "description": "Internal Error" }
+```
+
+The container was running. The API was responding. The language IDs were correct. Everything *looked* fine.
+
+**The Diagnosis (3-layer investigation):**
+1. **Layer 1 — Verified connectivity:** `netstat` confirmed port 2358 was open and listening. The Docker container was definitely up.
+2. **Layer 2 — Direct API test:** Hitting the local Judge0 API directly returned the "Internal Error" — eliminating the Node.js app as the source.
+3. **Layer 3 — Root cause:** Judge0's `isolate` sandbox creates execution environments using **Linux cgroup v1** to enforce CPU/memory limits. Docker Desktop on Windows uses WSL2, which enforces **cgroup v2** exclusively. The two are fundamentally incompatible — `isolate` cannot find the cgroup v1 filesystem structures and fails to create the `/box` sandbox directory.
+
+**The Fix — Cloud Migration:**
+```
+# Before: Broken local Docker
+JUDGE0_API_URL=http://localhost:2358
+
+# After: Free cloud CE instance (cgroup-agnostic, no setup)
+JUDGE0_API_URL=https://ce.judge0.com
+```
+
+By pointing the service at the **official Judge0 CE cloud instance** (`https://ce.judge0.com`), we bypassed the entire Windows/cgroup incompatibility. The cloud instance runs on Linux with cgroup v1 and requires no API key for standard use.
+
+**Verified fix:**
+```json
+// Test response after migration
+{
+  "stdout": "Fix confirmed!\n",
+  "status": { "id": 3, "description": "Accepted" },
+  "time": "0.024",
+  "memory": 7340
+}
+```
+
+> **Interview Q:** *"What was the hardest technical bug you solved in this project?"*
+>
+> **Your Answer:** *"The hardest was a deep infrastructure incompatibility. My local Judge0 Docker container was running, the port was open, but every execution returned a cryptic 'Internal Error — /box/script.js not found.' After confirming the container was healthy, I isolated the problem to Judge0's `isolate` sandbox, which creates execution environments using Linux cgroup v1 to enforce resource limits. Docker Desktop on Windows runs WSL2, which enforces cgroup v2 — a fundamentally incompatible kernel interface. `isolate` couldn't find the cgroup v1 filesystem and failed to create the execution sandbox. My solution was to migrate to the Judge0 CE cloud instance, which runs on native Linux. This eliminated the infrastructure incompatibility entirely and required only a one-line environment variable change."*
+
+---
+
+### Concept 11: Base64 Encoding for Code Payloads
+
+**Why Base64-encode source code before sending to Judge0?**
+
+Raw source code contains characters that are problematic inside JSON strings: backslashes, double quotes, newlines, and null bytes. If a Python program contains `print("hello\nworld")`, serializing it naively into JSON would break the JSON structure. Base64 encoding converts arbitrary binary/text data into a safe ASCII character set (`A-Z`, `a-z`, `0-9`, `+`, `/`), eliminating all JSON escaping issues.
+
+```js
+const encodeBase64 = (value = "") => Buffer.from(value, "utf-8").toString("base64")
+const decodeBase64 = (value) => value ? Buffer.from(value, "base64").toString("utf-8") : ""
+```
+
+> **Interview Q:** *"Why did you Base64-encode the source code before sending it to Judge0?"*
+>
+> **Your Answer:** *"Source code can contain any character — backslashes, double quotes, control characters — all of which are semantically significant in JSON. Base64 encoding converts the raw source into a safe ASCII subset that serializes cleanly into JSON without escaping conflicts. Judge0 natively supports the `base64_encoded=true` query parameter, so it decodes the payload on its end transparently."*
+
+---
 
 ## 🟢 ARCHITECTURE: Model-View-Controller (MVC) Pattern
 
-As the application grew with MongoDB and REST APIs, we restructured the backend to follow industry-standard architectural patterns to ensure scalability and maintainability.
+### Concept 12: Separation of Concerns (MVC)
 
-### Concept 9: Separation of Concerns (MVC)
-**The Problem:** Stacking all database logic, API routes, and WebSocket listeners into a single `server.js` file creates "spaghetti code." If the app scales, this file becomes unreadable and impossible for multiple engineers to work on simultaneously.
-**The Solution:** We implemented the Model-View-Controller (MVC) architectural pattern.
+**The Problem:** Stacking all database logic, API routes, and WebSocket listeners into a single `server.js` creates unmaintainable "spaghetti code."
 
-* **How it works:** We separated our backend into distinct layers:
-  - **Models (`models/Workspace.model.js`):** Defines the database schema and structure.
-  - **Controllers (`controllers/workspace.controller.js`):** Handles the core business logic (talking to the database and formatting responses).
-  - **Routes (`routes/workspace.routes.js`):** Acts as a traffic cop, mapping URL endpoints (like `/api/workspaces`) to specific controller functions.
-  - **Config & Sockets:** We extracted database connections (`db.js`) and Yjs WebSocket listeners (`yjs.socket.js`) into dedicated modules.
-* **Interview Question:** *"How did you structure your backend to handle future scalability?"*
-* **Your Answer:** *"I adhered strictly to the principle of Separation of Concerns by adopting the MVC pattern. I abstracted my database schemas into Models, my business logic into Controllers, and my API endpoints into Routers. This transformed my `server.js` from a monolithic script into a clean entry-point orchestrator, ensuring that adding new features in the future won't clutter existing code or introduce regression bugs."*
+**The Solution:** Industry-standard **MVC (Model-View-Controller)** architecture.
+
+```
+server/src/
+├── config/
+│   └── db.js                     # Database connection (MongoDB/Mongoose)
+├── models/
+│   └── Workspace.model.js        # M — Data schema definition
+├── controllers/
+│   ├── workspace.controller.js   # C — Business logic (CRUD)
+│   └── execution.controller.js   # C — Code execution logic
+├── routes/
+│   ├── workspace.routes.js       # Traffic cop — maps URLs to controllers
+│   └── execution.routes.js       # POST /api/execution/run
+├── services/
+│   └── judge0.service.js         # External API abstraction layer
+├── sockets/
+│   └── yjs.socket.js             # WebSocket lifecycle handlers
+└── server.js                     # Entry point — orchestrates all modules
+```
+
+**The Service Layer:** Beyond MVC, we added a `services/` directory for external API calls (Judge0). This is the **Repository/Service Pattern** — controllers never call external APIs directly. This makes services independently testable and swappable.
+
+> **Interview Q:** *"How did you structure your backend for scalability?"*
+>
+> **Your Answer:** *"I adopted a strict MVC architecture with an additional Service layer for external API integrations. Models handle the Mongoose schema, Controllers contain business logic, Routes act as traffic cops mapping URLs to controllers, and Services abstract third-party API calls like Judge0. This means `server.js` is just a clean entry-point orchestrator — adding a new feature only touches the relevant layer without risking regression in others."*
+
+---
 
 ## 🟢 NETWORKING & DEBUGGING: Overcoming Systems Failures
 
-During development, we encountered incredibly subtle infrastructure bugs that completely halted the application. Knowing how to debug these is a massive green flag for senior engineering roles.
+### Concept 13: Cross-Origin WebSocket Failures
 
-### Concept 10: Cross-Origin WebSocket Failures
-**The Problem:** The frontend UI worked perfectly, but real-time cursor syncing failed completely.
-**The Solution:** Correcting the WebSocket target port boundary.
+**The Problem:** The frontend UI loaded perfectly, but real-time cursor syncing failed completely in the browser.
 
-* **How it works:** When developing locally, Vite runs the frontend on port `5173`, while the Express backend runs on port `3000`. Initially, our `y-socket.io` client tried to connect to a relative path (`"/"`), which made it attempt to open a WebSocket with the Vite dev server instead of the Node backend. By explicitly passing the backend URL (`"http://localhost:3000"`) into the `SocketIOProvider`, the client correctly established a cross-origin socket connection.
-* **Interview Question:** *"Did you face any issues linking the frontend with the backend?"*
-* **Your Answer:** *"Yes, when splitting the stack into a Vite frontend and an Express backend, I ran into Cross-Origin Resource Sharing (CORS) and port boundary issues. My WebSockets initially failed because they were defaulting to relative paths. I solved this by explicitly directing my WebSocket client to the backend's port and configuring the `cors` middleware in Express to accept WebSocket upgrades from external origins."*
+**The Root Cause:** Vite runs the frontend on port `5173`. The y-socket.io client was connecting to a relative path (`"/"`), which resolved to the Vite dev server — not the Express backend on port `3000`. The Vite server doesn't speak the Socket.io protocol, so the WebSocket handshake silently failed.
 
-### Concept 11: Internal DNS Hijacking in Node.js
-**The Problem:** Mongoose hung indefinitely while trying to connect to MongoDB, throwing `querySrv ECONNREFUSED`. Windows `nslookup` worked fine, but Node.js failed to resolve the database URL.
-**The Solution:** Forcing Node to bypass the local broken DNS resolver.
+**The Fix:**
+```jsx
+// Wrong — connects to Vite dev server on port 5173
+new SocketIOProvider("/", roomId, ydoc)
 
-* **How it works:** Node.js uses an internal C++ library (`c-ares`) for DNS resolution. On certain restrictive networks (like those with strict VPNs, ISP filters, or antivirus interference), `c-ares` gets blocked from querying DNS records like `SRV`. To bypass this, we injected `dns.setServers(['8.8.8.8', '8.8.4.4'])` into our database configuration file. This "hacker fix" forced the Node server to ignore the local network and query Google's public DNS servers directly, instantly resolving the connection timeout.
-* **Interview Question:** *"What was the most difficult bug you resolved in this project?"*
-* **Your Answer:** *"The hardest bug was a low-level networking issue where Node.js couldn't connect to MongoDB Atlas due to `querySrv ECONNREFUSED` errors. After verifying my IP whitelist, I realized the host machine's DNS configuration was blocking Node's internal `c-ares` DNS resolver. I engineered a workaround by importing the `dns` module and overriding the default servers with Google's public DNS (`8.8.8.8`). This forced Node to bypass the restrictive local network, completely solving the database timeout."*
+// Correct — explicitly targets the Express backend
+new SocketIOProvider("http://localhost:3000", roomId, ydoc)
+```
 
-## 🟡 PHASE 4: Judge0 Code Execution (Pending)
-*(This section will be updated when we implement real-time code execution.)*
+Plus adding `cors` middleware on Express:
+```js
+app.use(cors())
+const io = new Server(httpServer, { cors: { origin: "*" } })
+```
+
+> **Interview Q:** *"Did you face any issues connecting your frontend to the backend?"*
+>
+> **Your Answer:** *"Yes — when splitting into a Vite frontend and Express backend on different ports, my WebSocket client silently connected to the wrong server because it used a relative path. I debugged this using browser DevTools Network tab, saw the socket upgrade failing on port 5173, and fixed it by explicitly passing the backend URL. I also configured CORS in Express to permit WebSocket upgrade requests from external origins."*
+
+---
+
+### Concept 14: Internal DNS Hijacking in Node.js
+
+**The Problem:** Mongoose hung indefinitely connecting to MongoDB Atlas with `querySrv ECONNREFUSED`. The OS-level `nslookup` command worked fine — it was Node.js-specific.
+
+**The Root Cause:** Node.js uses an internal C++ DNS library called **`c-ares`** for DNS resolution. On restricted networks (VPNs, corporate firewalls, certain ISP filters), `c-ares` gets blocked from querying `SRV` DNS records — which MongoDB Atlas connection strings use for cluster discovery.
+
+**The Fix:**
+```js
+// config/db.js — Override Node's DNS resolver before connecting
+import dns from "dns"
+dns.setServers(["8.8.8.8", "8.8.4.4"]) // Force Google's public DNS
+
+export const connectDB = async () => {
+  await mongoose.connect(process.env.MONGO_URI)
+}
+```
+
+> **Interview Q:** *"What was the most difficult infrastructure bug you resolved?"*
+>
+> **Your Answer:** *"The hardest was a Node.js-specific DNS failure connecting to MongoDB Atlas. The OS could resolve the hostname fine, but Node's internal `c-ares` resolver was being blocked by the network from querying SRV DNS records — which MongoDB Atlas uses for cluster discovery. I diagnosed this by comparing `nslookup` output against Node's `dns.resolve()` output. The fix was importing the `dns` module and calling `dns.setServers(['8.8.8.8'])` before connecting — forcing Node to bypass the local DNS resolver and query Google's public DNS directly."*
+
+---
 
 ## 🟢 PHASE 5: Authentication System (Clerk Integration)
 
-Authentication is crucial for ownership, security, and dashboard personalization. We implemented an industry-standard Auth flow using Clerk.
+### Concept 15: Third-Party Identity Providers (Clerk)
 
-### Concept 7: Third-Party Identity Providers (Clerk)
-**The Problem:** Building a custom authentication system (hashing passwords with bcrypt, managing JWT access/refresh tokens, handling forgotten passwords, and OAuth providers like Google) is incredibly complex and poses massive security risks if done incorrectly.
-**The Solution:** We utilized Clerk as our Identity Provider (IdP) to offload the security footprint.
+**The Problem:** Building custom auth (bcrypt password hashing, JWT generation/rotation, OAuth callbacks, refresh token management, session revocation) is a months-long project with significant security liability if any step is wrong.
 
-* **How it works:** We wrapped our React application in a `<ClerkProvider>`. When a user visits the homepage, they can sign in via a highly optimized, pre-built UI (`<SignInButton />`). The `<SignedIn>` and `<SignedOut>` components natively control which UI elements render based on the user's authentication state.
-* **Interview Question:** *"Why did you choose to use a third-party service like Clerk instead of building authentication from scratch?"*
-* **Your Answer:** *"While I understand how to build JWT-based authentication using tools like Passport.js and bcrypt, I opted for Clerk to ensure enterprise-grade security. Managing session cookies, OAuth callbacks, and token rotation introduces significant security vulnerabilities if not perfectly implemented. By delegating identity management to an Identity Provider (IdP) like Clerk, I accelerated development while guaranteeing a secure, frictionless user experience."*
+**The Solution:** **Clerk** as an Identity Provider (IdP).
 
-### Concept 8: Relational Workspaces (User Dashboards)
-**The Problem:** Without authentication, anyone with a room link can join anonymously, and users cannot track their previous workspaces.
-**The Solution:** Tying MongoDB Workspace documents to specific Clerk User IDs.
+```jsx
+// main.jsx — Wrap the app in Clerk's provider
+<ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+  <App />
+</ClerkProvider>
 
-* **How it works:** We updated the Mongoose `Workspace` schema to include an `ownerId` field. Now, when an authenticated user clicks 'Create Workspace', the React frontend extracts their unique Clerk `user.id` and sends it to our Express server via a `POST /api/workspaces` route. The server stores the `ownerId` alongside the `roomId`. On the homepage, a `GET` request retrieves all workspaces matching that `ownerId` to populate the user's personal dashboard. Furthermore, when entering a room, we automatically extract the user's Clerk `firstName` to use as their real-time collaboration username, removing the need for a manual 'Enter Name' prompt.
-* **Interview Question:** *"How does your application map users to their created content?"*
-* **Your Answer:** *"I utilized a relational pattern in MongoDB. I expanded the Workspace schema to store an `ownerId` corresponding to the user's unique Clerk ID. I then exposed a REST API endpoint that queries the database for workspaces matching the authenticated user's ID. This allows the frontend to dynamically render a personalized dashboard of historical workspaces, turning the app from a temporary session tool into a persistent SaaS platform."*
+// Anywhere in the app
+const { user, isLoaded } = useUser()
+const clerkUserId = user?.id  // e.g., "user_2abc123xyz"
+```
+
+**What Clerk handles for you:** OAuth providers (Google, GitHub), session management, JWTs, CSRF protection, MFA, email verification, and passwordless login.
+
+> **Interview Q:** *"Why did you use Clerk instead of building auth from scratch?"*
+>
+> **Your Answer:** *"I understand JWT-based auth with bcrypt and Passport.js, but I chose Clerk to eliminate the security liability. A single mistake in token rotation, CSRF protection, or OAuth callback handling can be catastrophic. Clerk is an enterprise-grade Identity Provider that handles all of that, audited by security professionals. It let me focus on the collaborative features — the actual differentiator of the product — rather than reinventing a solved problem."*
+
+---
+
+### Concept 16: Relational Workspaces (User Dashboards)
+
+**The Problem:** Without auth, anyone with a link can join anonymously and users can't track their history.
+
+**The Solution:** Tying MongoDB `Workspace` documents to Clerk user IDs.
+
+```js
+// Workspace.model.js
+const WorkspaceSchema = new mongoose.Schema({
+  roomId:    { type: String, required: true, unique: true },
+  ownerId:   { type: String, required: true }, // Clerk user.id
+  name:      { type: String, required: true },
+  content:   { type: String, default: "" },
+  createdAt: { type: Date, default: Date.now },
+})
+```
+
+```js
+// workspace.controller.js — Dashboard query
+export const getUserWorkspaces = async (req, res) => {
+  const { ownerId } = req.query
+  const workspaces = await Workspace.find({ ownerId }).sort({ createdAt: -1 })
+  res.json({ success: true, workspaces })
+}
+```
+
+> **Interview Q:** *"How does your application map users to their content?"*
+>
+> **Your Answer:** *"I used a relational pattern in MongoDB. The Workspace schema stores an `ownerId` field set to the user's unique Clerk ID. When an authenticated user creates a workspace, the frontend extracts `user.id` from Clerk and sends it in the POST body. The dashboard query is a simple `Workspace.find({ ownerId })`. This transforms the app from a stateless session tool into a persistent, personalized SaaS platform."*
+
+---
 
 ## 🔴 PHASE 6: AI Intent Mode (Pending)
-*(This section will be updated when we integrate the Gemini API.)*
+*(This section will be updated when we integrate the Gemini API for AI-assisted coding.)*
 
 ## 🔴 PHASE 7: Codebase Visualization (Pending)
 *(This section will be updated when we build the React Flow architecture map.)*
 
 ## 🔴 PHASE 8: Dockerized Deployment (Pending)
-*(This section will be updated when we containerize the application.)*
+*(This section will be updated when we containerize and deploy the full stack.)*
+
+---
+
+## 🎯 MASTER INTERVIEW CHEAT SHEET
+
+### "Tell me about this project" (60-second pitch)
+*"CodeWeave is a production-grade, real-time collaborative code editor — think Google Docs but for code. I built it full-stack with React, Node.js, and MongoDB. The core collaboration uses Yjs CRDTs, which mathematically guarantee that any number of users can type simultaneously without conflicts. I integrated Monaco Editor — the same engine as VS Code — for a professional editing experience. Users can execute code in JavaScript, Python, C++, and Java through the Judge0 CE API, which provides a sandboxed execution environment. I secured the platform with Clerk authentication, giving users a persistent dashboard of their workspaces. The backend follows strict MVC architecture with a service layer, and I overcame some significant infrastructure challenges including a Docker cgroup v2 incompatibility and a Node.js-specific DNS resolution bug."*
+
+### Key Differentiating Talking Points
+| Topic | Your Edge |
+|---|---|
+| **CRDTs vs OT** | Can explain the mathematical difference; CRDTs don't need a central server to resolve conflicts |
+| **Debouncing writes** | Reduced DB writes by 99%+ — shows awareness of production constraints |
+| **cgroup v2 bug** | Deep systems debugging — port-level diagnosis, kernel-level root cause |
+| **DNS hijacking fix** | Node.js internals (`c-ares`) — most candidates have never seen this |
+| **Server-side Yjs hooks** | Server is the source of truth, not the client — proper distributed system design |
+| **MVC + Service layer** | Clean architecture beyond just "MVC" — external API abstraction |
+| **Base64 for code payloads** | Knows WHY, not just how — binary-safe serialization rationale |

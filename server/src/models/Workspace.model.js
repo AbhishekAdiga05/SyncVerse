@@ -10,9 +10,17 @@ const workspaceSchema = new mongoose.Schema({
     type: String, // From Clerk user.id
     required: false
   },
-  code:{
-    type: String, 
-    default: "// Start coding collaboratively here..." 
+  name: {
+    type: String,
+    default: "Untitled Workspace"
+  },
+  language: {
+    type: String,
+    default: "javascript"
+  },
+  code: {
+    type: String,
+    default: "// Start coding collaboratively here..."
   },
 },
 {
