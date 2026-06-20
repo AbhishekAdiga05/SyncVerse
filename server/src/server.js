@@ -7,6 +7,7 @@ import { connectDB } from "./config/db.js";
 import { initializeYjsSockets } from "./sockets/yjs.socket.js";
 import workspaceRoutes from "./routes/workspace.routes.js";
 import executionRoutes from "./routes/execution.routes.js";
+import aiRoutes from "./routes/ai.routes.js";
 
 
 // 1. Initialize Database Connection
@@ -35,6 +36,7 @@ initializeYjsSockets(io);
 // 5. Routes
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/execution", executionRoutes);
+app.use("/api/ai", aiRoutes);
 
 app.get("/health", (req, res) => {
     res.status(200).json({

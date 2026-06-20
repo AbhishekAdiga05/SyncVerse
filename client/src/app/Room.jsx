@@ -6,9 +6,11 @@ import { SocketIOProvider } from "y-socket.io"
 import { useParams, useNavigate } from "react-router-dom"
 import {
   Users, Code2, Copy, Check, ArrowLeft, Play,
-  Terminal, Loader2, Trash2, ChevronDown, Circle
+  Terminal, Loader2, Trash2, ChevronDown, Circle, Sparkles
 } from "lucide-react"
 import { useUser } from "@clerk/clerk-react"
+import { useAi } from "./hooks/useAi.js"
+import AiPanel from "./components/AiPanel.jsx"
 
 const COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#10b981",
@@ -56,6 +58,10 @@ export default function Room() {
   const [output, setOutput]             = useState("")
   const [executionMeta, setExecutionMeta] = useState(null)
   const [isRunning, setIsRunning]       = useState(false)
+
+  // AI Intent Mode
+  const [showAiPanel, setShowAiPanel]   = useState(false)
+  const aiHook                          = useAi()
 
   // Load workspace metadata (name)
   useEffect(() => {
@@ -317,6 +323,20 @@ export default function Room() {
 
           <div className="flex-1" />
 
+          {/* AI Intent Mode toggle */}
+          <button
+            onClick={() => setShowAiPanel(p => !p)}
+            title="Toggle AI Intent Mode"
+            className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border
+              ${ showAiPanel
+                ? "bg-violet-500/20 text-violet-300 border-violet-500/40 shadow-[0_0_8px_rgba(139,92,246,0.15)]"
+                : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-violet-500/40 hover:text-violet-300"
+              }`}
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            AI
+          </button>
+
           {/* Run button */}
           <button
             onClick={handleRunCode}
@@ -353,66 +373,84 @@ export default function Room() {
             />
           </div>
 
-          {/* I/O panel */}
+          {/* I/O panel + AI panel */}
           <aside className="w-80 xl:w-96 bg-neutral-950 border-l border-neutral-800 flex flex-col shrink-0">
 
-            {/* Input */}
-            <div className="h-2/5 min-h-0 border-b border-neutral-800 flex flex-col">
-              <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
-                <Terminal className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Stdin</span>
-              </div>
-              <textarea
-                value={stdin}
-                onChange={e => setStdin(e.target.value)}
-                spellCheck="false"
-                placeholder="Program input goes here…"
-                className="flex-1 min-h-0 w-full resize-none bg-neutral-950 p-4 font-mono text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none leading-relaxed"
-              />
-            </div>
+            {/* ── Stdin + Output (always visible) ── */}
+            <div className={`flex flex-col min-h-0 transition-all duration-200 ${showAiPanel ? "h-1/2" : "flex-1"}`}>
 
-            {/* Output */}
-            <div className="flex-1 min-h-0 flex flex-col">
-              <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
-                <Terminal className="w-3.5 h-3.5 text-amber-400" />
-                <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Output</span>
-
-                <div className="flex-1" />
-
-                {/* Execution meta */}
-                {executionMeta && (
-                  <div className="flex items-center gap-2">
-                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyle}`}>
-                      {executionMeta.status}
-                    </span>
-                    {executionMeta.time && (
-                      <span className="text-xs text-neutral-500">{executionMeta.time}s</span>
-                    )}
-                    {executionMeta.memory && (
-                      <span className="text-xs text-neutral-500">{executionMeta.memory}KB</span>
-                    )}
-                  </div>
-                )}
-
-                {/* Clear button */}
-                {output && (
-                  <button
-                    onClick={() => { setOutput(""); setExecutionMeta(null); }}
-                    className="p-1 rounded text-neutral-600 hover:text-neutral-400 transition"
-                    title="Clear output"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                )}
+              {/* Input */}
+              <div className="h-2/5 min-h-0 border-b border-neutral-800 flex flex-col">
+                <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
+                  <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Stdin</span>
+                </div>
+                <textarea
+                  value={stdin}
+                  onChange={e => setStdin(e.target.value)}
+                  spellCheck="false"
+                  placeholder="Program input goes here…"
+                  className="flex-1 min-h-0 w-full resize-none bg-neutral-950 p-4 font-mono text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none leading-relaxed"
+                />
               </div>
 
-              <pre className="flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs text-neutral-100 leading-relaxed">
-                {isRunning
-                  ? <span className="text-amber-400 animate-pulse">● Running…</span>
-                  : output || <span className="text-neutral-600">Run code to see output here.</span>
-                }
-              </pre>
+              {/* Output */}
+              <div className="flex-1 min-h-0 flex flex-col">
+                <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
+                  <Terminal className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Output</span>
+
+                  <div className="flex-1" />
+
+                  {/* Execution meta */}
+                  {executionMeta && (
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyle}`}>
+                        {executionMeta.status}
+                      </span>
+                      {executionMeta.time && (
+                        <span className="text-xs text-neutral-500">{executionMeta.time}s</span>
+                      )}
+                      {executionMeta.memory && (
+                        <span className="text-xs text-neutral-500">{executionMeta.memory}KB</span>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Clear button */}
+                  {output && (
+                    <button
+                      onClick={() => { setOutput(""); setExecutionMeta(null); }}
+                      className="p-1 rounded text-neutral-600 hover:text-neutral-400 transition"
+                      title="Clear output"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                <pre className="flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs text-neutral-100 leading-relaxed">
+                  {isRunning
+                    ? <span className="text-amber-400 animate-pulse">● Running…</span>
+                    : output || <span className="text-neutral-600">Run code to see output here.</span>
+                  }
+                </pre>
+              </div>
             </div>
+
+            {/* ── AI Panel (slides in when toggled) ── */}
+            {showAiPanel && (
+              <div className="flex-1 min-h-0 border-t border-violet-500/20">
+                <AiPanel
+                  editorRef={editorRef}
+                  language={selectedLanguage.monaco}
+                  stderr={output}   // reuse output state — contains stderr from Judge0
+                  aiState={aiHook}
+                  onTrigger={aiHook.triggerAi}
+                  onClear={aiHook.clearAi}
+                />
+              </div>
+            )}
           </aside>
         </div>
       </section>

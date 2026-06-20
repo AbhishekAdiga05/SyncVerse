@@ -455,8 +455,139 @@ export const getUserWorkspaces = async (req, res) => {
 
 ---
 
-## 🔴 PHASE 6: AI Intent Mode (Pending)
-*(This section will be updated when we integrate the Gemini API for AI-assisted coding.)*
+## 🟢 PHASE 6: AI Intent Mode (Gemini API Integration)
+
+### Concept 17: Service Layer for External AI APIs (Gemini)
+
+**The Problem:** The Gemini API key must never be exposed in the frontend JavaScript bundle — any user could open DevTools and extract it. We also need a clean abstraction so the AI provider (Gemini, Claude, OpenAI) can be swapped without touching controllers or UI code.
+
+**The Solution:** A `gemini.service.js` in the existing `services/` layer — mirroring the Judge0 pattern exactly. The Node.js server acts as a secure proxy.
+
+```js
+// server/src/services/gemini.service.js
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+
+export const queryGemini = async (action, payload) => {
+  const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-2.0-flash" });
+  const fullPrompt = buildSystemPrompt(action, payload);
+  const result = await model.generateContent(fullPrompt);
+  return result.response.text();
+};
+```
+
+**Architecture:**
+```
+[React Client — AiPanel.jsx]
+     │
+     │  POST /api/ai
+     │  { action, code, language, prompt?, stderr? }
+     ▼
+[Express Server] ── ai.controller.js (validates input)
+     │
+     │  gemini.service.js (builds prompt, calls Gemini SDK)
+     ▼
+[Google Gemini API]  ← GEMINI_API_KEY stays server-side only
+     │
+     │  { candidates[0].content.parts[0].text }
+     ▼
+[Express Server] → { success: true, result: "<markdown>" }
+     │
+     ▼
+[React Client — AiPanel renders response]
+```
+
+> **Interview Q:** *"How did you keep your AI API key secure in a React app?"*
+>
+> **Your Answer:** *"I never let the Gemini API key touch the frontend bundle. Instead, I built a server-side proxy using the same service layer pattern as my Judge0 integration — a `gemini.service.js` that the client never directly calls. The React client posts to `POST /api/ai` on my own Express server, which holds the key in a `.env` file and calls Gemini on the client's behalf. The key is never serialized into any JavaScript the browser downloads."*
+
+---
+
+### Concept 18: Prompt Engineering Architecture
+
+**The Problem:** Four different AI features (Explain, Refactor, Generate, Debug) each need carefully-crafted prompts. Scattering prompt strings across controllers or components creates unmaintainable code.
+
+**The Solution:** A single `buildSystemPrompt(action, payload)` function inside `gemini.service.js` — the sole source of truth for all prompt engineering.
+
+```js
+function buildSystemPrompt(action, { code, language, prompt, stderr }) {
+  const lang = language || "plaintext";
+  switch (action) {
+    case "explain":  return `You are an expert ${lang} developer. Explain...\n\`\`\`${lang}\n${code}\n\`\`\``;
+    case "refactor": return `Refactor for readability and performance...\n\`\`\`${lang}\n${code}\n\`\`\``;
+    case "generate": return `Generate clean ${lang} code for: ${prompt}`;
+    case "debug":    return `Diagnose this error...\nCode:\n${code}\nError:\n${stderr}`;
+  }
+}
+```
+
+> **Interview Q:** *"How did you structure your AI prompts?"*
+>
+> **Your Answer:** *"I centralized all prompt engineering in a single `buildSystemPrompt()` function inside the service layer. It takes an action type and a payload, and returns the complete, context-aware prompt string. This means improving any prompt — say, adding chain-of-thought instructions to the debug prompt — only touches one function and is immediately testable in isolation."*
+
+---
+
+### Concept 19: CRDT Safety with AI Suggestions
+
+**The Problem:** In a collaborative editor, if AI suggestions were automatically inserted into the shared document, every collaborator would see an unsolicited AI edit appear in their editor mid-session. This could disrupt other users' work and violates the principle that all document changes should be intentional user actions.
+
+**The Solution:** AI responses are **never written back to the Yjs CRDT automatically**. The panel renders the AI response as read-only text. The user must manually copy and paste any suggestion into the editor — at which point it becomes a normal Yjs operation, attributed to that user, and synced to all peers through the CRDT.
+
+```
+✅ AI Response  →  AiPanel (read-only <pre>)  →  User manually pastes  →  Monaco  →  Yjs CRDT  →  All peers
+❌ AI Response  →  ydoc.getText("monaco").insert(...)  ← This would bypass user intent and attribution
+```
+
+> **Interview Q:** *"How does AI interact with your real-time collaborative CRDT system?"*
+>
+> **Your Answer:** *"Intentionally, AI responses don't interact with Yjs at all. The AI panel renders its suggestions as read-only text outside the editor. If a user wants to apply a suggestion, they manually paste it — at that point it becomes a normal, attributed CRDT operation that syncs to all peers like any other keystroke. Auto-inserting AI content would break collaborative trust: a collaborator might see code appear in their editor with no obvious author. The manual apply step preserves intentionality and attribution."*
+
+---
+
+### Concept 20: Context-Aware AI via Monaco Selection API
+
+**The Problem:** Sending the entire file to Gemini for a question about a single function wastes tokens, increases latency, and produces less focused responses.
+
+**The Solution:** The `AiPanel` reads the Monaco editor's current selection via `editorRef.current.getSelection()`. If the user has selected a region, only that region is sent. If nothing is selected, the full file is sent.
+
+```js
+// AiPanel.jsx — getCode()
+const getCode = () => {
+  const selection = editorRef.current.getSelection();
+  const model = editorRef.current.getModel();
+  if (selection && !selection.isEmpty()) {
+    return model.getValueInRange(selection);   // Only the selection
+  }
+  return editorRef.current.getValue();         // Full file fallback
+}
+```
+
+> **Interview Q:** *"How does the AI know what code the user is asking about?"*
+>
+> **Your Answer:** *"I used Monaco's `getSelection()` API to check if the user has highlighted a specific region of code. If they have, I send only that range via `getValueInRange()`. If nothing is selected, I fall back to the full editor content. This makes the AI context-aware without requiring any special UI — the user just highlights a function and clicks Explain, exactly like they would in any modern IDE."*
+
+---
+
+### Concept 21: Architectural Consistency (The Service Layer Pattern)
+
+The AI integration added **0 new architectural patterns**. Every decision mirrors the existing Judge0 integration:
+
+| Concern | Judge0 (Code Execution) | Gemini (AI Intent) |
+|---|---|---|
+| **Service file** | `judge0.service.js` | `gemini.service.js` |
+| **Controller** | `execution.controller.js` | `ai.controller.js` |
+| **Route** | `execution.routes.js` | `ai.routes.js` |
+| **Endpoint** | `POST /api/execution/run` | `POST /api/ai` |
+| **Key discriminator** | `languageId` in body | `action` in body |
+| **Frontend hook** | Inline in `Room.jsx` | `useAi.js` custom hook |
+| **Key security** | None needed | `GEMINI_API_KEY` in `.env` |
+
+> **Interview Q:** *"How did adding AI features change your backend architecture?"*
+>
+> **Your Answer:** *"It didn't change the architecture at all — that was the goal. The existing MVC + Service Layer pattern absorbed the new feature perfectly. I added one service, one controller, and one route file, each following the exact same structure as the Judge0 integration I'd already built. The `server.js` entry point needed only two new lines. The architectural investment in Phase 4 paid dividends in Phase 6."*
+
+
 
 ## 🔴 PHASE 7: Codebase Visualization (Pending)
 *(This section will be updated when we build the React Flow architecture map.)*
