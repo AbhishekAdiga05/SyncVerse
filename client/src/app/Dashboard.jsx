@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { v4 as uuidV4 } from "uuid"
 import {
   Code2, Plus, Users, ExternalLink, Pencil, Check, X,
-  Trash2, Clock, LayoutDashboard, ArrowRight, Zap, Terminal, Sparkles
+  Trash2, Clock, ArrowRight, Search, Edit3, Share2,
 } from "lucide-react"
 import { UserButton, useUser } from "@clerk/clerk-react"
 
@@ -48,13 +48,11 @@ function WorkspaceCard({ ws, onOpen, onDelete, onRename }) {
       style={{ borderLeft: `3px solid ${lang.border}40` }}
       onClick={() => !editing && onOpen(ws.roomId)}
     >
-      {/* Language badge */}
       <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium mb-3 ${lang.bg}`}>
         <span className={`w-1.5 h-1.5 rounded-full ${lang.dot}`} />
         {lang.label}
       </div>
 
-      {/* Name row */}
       <div className="flex items-start justify-between gap-2 mb-2">
         {editing ? (
           <div className="flex items-center gap-1 flex-1" onClick={e => e.stopPropagation()}>
@@ -64,7 +62,7 @@ function WorkspaceCard({ ws, onOpen, onDelete, onRename }) {
               onChange={e => setNameVal(e.target.value)}
               onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel() }}
               className="flex-1 bg-neutral-700 text-white text-sm font-semibold px-2 py-1
-                         rounded border border-amber-500 focus:outline-none"
+                         rounded border border-amber-500/60 focus:outline-none"
             />
             <button onClick={commit} className="text-emerald-400 hover:text-emerald-300 transition p-1"><Check className="w-4 h-4" /></button>
             <button onClick={cancel} className="text-neutral-400 hover:text-neutral-300 transition p-1"><X className="w-4 h-4" /></button>
@@ -75,7 +73,6 @@ function WorkspaceCard({ ws, onOpen, onDelete, onRename }) {
           </h3>
         )}
 
-        {/* Hover actions */}
         {!editing && (
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                onClick={e => e.stopPropagation()}>
@@ -97,10 +94,8 @@ function WorkspaceCard({ ws, onOpen, onDelete, onRename }) {
         )}
       </div>
 
-      {/* Room ID */}
       <p className="text-[10px] text-neutral-600 font-mono truncate mb-3">{ws.roomId}</p>
 
-      {/* Footer */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1 text-xs text-neutral-600">
           <Clock className="w-3 h-3" />
@@ -116,7 +111,7 @@ function WorkspaceCard({ ws, onOpen, onDelete, onRename }) {
   )
 }
 
-/* ── CreateWorkspaceModal content (inline) ─────────────────────── */
+/* ── Language Options ──────────────────────────────────────────── */
 const LANG_OPTIONS = [
   { id: "javascript", label: "JavaScript", icon: "JS", color: "border-yellow-500/40 hover:border-yellow-500 text-yellow-400" },
   { id: "python",     label: "Python",     icon: "Py", color: "border-blue-500/40 hover:border-blue-500 text-blue-400"   },
@@ -136,8 +131,10 @@ export default function Dashboard() {
   const [selectedLang, setSelectedLang] = useState("javascript")
   const [joinId, setJoinId]             = useState("")
   const [deleteConfirm, setDeleteConfirm] = useState(null)
+  const [search, setSearch]             = useState("")
 
-  /* Fetch workspaces */
+  useEffect(() => { document.title = "Dashboard — CodeWeave" }, [])
+
   useEffect(() => {
     if (!user) return
     setLoading(true)
@@ -187,7 +184,10 @@ export default function Dashboard() {
     } catch {}
   }
 
-  /* Computed stats */
+  const filtered = workspaces.filter(w =>
+    !search || w.name?.toLowerCase().includes(search.toLowerCase())
+  )
+
   const greeting = () => {
     const h = new Date().getHours()
     if (h < 12) return "Good morning"
@@ -198,13 +198,7 @@ export default function Dashboard() {
   return (
     <main className="min-h-screen bg-[#09090b] text-white">
 
-      {/* ── Fixed ambient orbs ──────────────────────────────────── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden">
-        <div className="orb-amber -top-40 -left-40 opacity-60" />
-        <div className="orb-violet top-1/2 right-0 translate-x-1/3 opacity-50" />
-      </div>
-
-      {/* ── Sticky Topbar ──────────────────────────────────────── */}
+      {/* ── Topbar ──────────────────────────────────────────────── */}
       <nav className="sticky top-0 z-50 h-14 flex items-center px-6 gap-4
                       bg-[#09090b]/85 backdrop-blur-md border-b border-neutral-800/40">
         <button onClick={() => navigate("/")} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
@@ -231,24 +225,6 @@ export default function Dashboard() {
 
       <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
 
-        {/* ── Stats bar ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          {[
-            { icon: <LayoutDashboard className="w-4 h-4 text-amber-400" />, label: "Workspaces",   value: workspaces.length, sub: "total saved" },
-            { icon: <Terminal className="w-4 h-4 text-emerald-400" />,      label: "Executions",   value: "—",               sub: "run this week" },
-            { icon: <Sparkles className="w-4 h-4 text-violet-400" />,       label: "AI Queries",   value: "—",               sub: "via Gemini today" },
-          ].map((s) => (
-            <div key={s.label} className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex items-start gap-3">
-              <div className="p-2 bg-neutral-800 rounded-lg shrink-0">{s.icon}</div>
-              <div>
-                <p className="text-xl font-bold text-white">{s.value}</p>
-                <p className="text-xs text-neutral-500">{s.label}</p>
-                <p className="text-[10px] text-neutral-700">{s.sub}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
         {/* ── Main grid ──────────────────────────────────────────── */}
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
 
@@ -264,7 +240,6 @@ export default function Dashboard() {
               <p className="text-neutral-600 text-xs mb-4">Start a fresh collaborative session</p>
 
               <form onSubmit={createRoom} className="space-y-3">
-                {/* Language picker */}
                 <div className="grid grid-cols-4 gap-1.5">
                   {LANG_OPTIONS.map(l => (
                     <button
@@ -306,18 +281,17 @@ export default function Dashboard() {
               </form>
             </div>
 
-            {/* Join card */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-1">
+            {/* Join — compact */}
+            <form onSubmit={joinRoom} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
+              <div className="flex items-center gap-2 mb-3">
                 <Users className="w-4 h-4 text-neutral-400" />
                 <h2 className="text-sm font-bold">Join a Room</h2>
               </div>
-              <p className="text-neutral-600 text-xs mb-4">Enter an existing room ID to collaborate</p>
-              <form onSubmit={joinRoom} className="space-y-3">
+              <div className="flex gap-2">
                 <input
                   type="text"
-                  placeholder="Paste Room ID here"
-                  className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg
+                  placeholder="Room ID"
+                  className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg
                              text-sm text-white font-mono placeholder:text-neutral-600 focus:outline-none
                              focus:border-amber-500 transition-colors"
                   value={joinId}
@@ -325,55 +299,90 @@ export default function Dashboard() {
                 />
                 <button
                   type="submit"
-                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700
+                  className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700
                              text-white font-semibold text-sm rounded-lg transition-colors
-                             flex items-center justify-center gap-2"
+                             flex items-center gap-1.5 shrink-0"
                 >
-                  <ExternalLink className="w-4 h-4" /> Join Workspace
+                  <ArrowRight className="w-4 h-4" />
                 </button>
-              </form>
-            </div>
+              </div>
+            </form>
           </div>
 
-          {/* Right — Workspace dashboard */}
+          {/* Right — Workspace list */}
           <div className="lg:col-span-3">
             <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 h-full min-h-[480px] flex flex-col">
-              <div className="flex items-center justify-between mb-5">
-                <div className="flex items-center gap-2">
-                  <LayoutDashboard className="w-4 h-4 text-amber-400" />
-                  <h2 className="text-sm font-bold">Your Workspaces</h2>
+              {/* Header with search */}
+              <div className="flex items-center gap-3 mb-5">
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <Code2 className="w-4 h-4 text-amber-400 shrink-0" />
+                  <h2 className="text-sm font-bold">Workspaces</h2>
+                  <span className="text-xs text-neutral-600 font-mono bg-neutral-800 px-2 py-1 rounded-md shrink-0">
+                    {workspaces.length}
+                  </span>
                 </div>
-                <span className="text-xs text-neutral-600 font-mono bg-neutral-800 px-2 py-1 rounded-md">
-                  {workspaces.length} {workspaces.length !== 1 ? "workspaces" : "workspace"}
-                </span>
+                <div className="relative w-40 sm:w-48">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-600 pointer-events-none" />
+                  <input
+                    type="text"
+                    placeholder="Filter…"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-lg
+                               text-xs text-white placeholder:text-neutral-600 focus:outline-none
+                               focus:border-amber-500 transition-colors"
+                  />
+                </div>
               </div>
 
               {loading ? (
                 <div className="flex-1 flex flex-col gap-3">
                   {[1,2,3].map(i => <div key={i} className="h-24 rounded-xl bg-neutral-800/50 animate-pulse" />)}
                 </div>
-              ) : workspaces.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center gap-4 py-8">
-                  <div className="w-14 h-14 rounded-2xl bg-neutral-800 border border-neutral-800 flex items-center justify-center">
-                    <Code2 className="w-7 h-7 text-neutral-700" />
-                  </div>
-                  <div>
-                    <p className="text-white font-semibold mb-1">No workspaces yet</p>
-                    <p className="text-neutral-600 text-sm max-w-xs">
-                      Workspaces are persistent coding sessions that save automatically as you type.
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => document.querySelector("form")?.requestSubmit()}
-                    className="flex items-center gap-2 px-4 py-2 bg-amber-500/10 border border-amber-500/20
-                               text-amber-400 text-sm font-semibold rounded-lg hover:bg-amber-500/15 transition"
-                  >
-                    <Plus className="w-4 h-4" /> Create your first workspace
-                  </button>
+              ) : filtered.length === 0 ? (
+                <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
+                  {search ? (
+                    <>
+                      <div className="w-14 h-14 rounded-2xl bg-neutral-800 border border-neutral-800 flex items-center justify-center mb-4">
+                        <Search className="w-7 h-7 text-neutral-700" />
+                      </div>
+                      <p className="text-white font-semibold mb-1">No matches</p>
+                      <p className="text-neutral-600 text-sm">Try a different search term.</p>
+                    </>
+                  ) : (
+                    <>
+                      <div className="w-14 h-14 rounded-2xl bg-neutral-800 border border-neutral-800 flex items-center justify-center mb-4">
+                        <Code2 className="w-7 h-7 text-neutral-700" />
+                      </div>
+                      <p className="text-white font-semibold mb-1">No workspaces yet</p>
+                      <p className="text-neutral-600 text-sm max-w-xs mb-6">
+                        Workspaces are persistent coding sessions that save automatically. Create one to get started.
+                      </p>
+                      <div className="flex flex-col gap-2 items-center">
+                        <button
+                          onClick={() => {
+                            const nameInput = document.querySelector('input[placeholder="Workspace name (optional)"]')
+                            nameInput?.focus()
+                          }}
+                          className="flex items-center gap-2 px-5 py-2.5 bg-amber-500/10 border border-amber-500/20
+                                     text-amber-400 text-sm font-semibold rounded-lg hover:bg-amber-500/15 transition bounce"
+                        >
+                          <Plus className="w-4 h-4" /> Create your first workspace
+                        </button>
+                        <div className="flex items-center gap-2 mt-3 text-[10px] text-neutral-700">
+                          <span className="flex items-center gap-1"><Edit3 className="w-3 h-3" /> Pick a language</span>
+                          <span className="text-neutral-800">·</span>
+                          <span className="flex items-center gap-1"><Share2 className="w-3 h-3" /> Share the link</span>
+                          <span className="text-neutral-800">·</span>
+                          <span className="flex items-center gap-1"><Code2 className="w-3 h-3" /> Code together</span>
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 custom-scroll">
-                  {workspaces.map(ws => {
+                  {filtered.map(ws => {
                     if (deleteConfirm === ws.roomId) {
                       return (
                         <div key={ws._id} className="bg-red-950/30 border border-red-800/40 rounded-xl p-4 flex items-center justify-between gap-3">
