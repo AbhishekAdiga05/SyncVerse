@@ -38,16 +38,6 @@ export const createWorkspace = async (req, res) => {
     }
 };
 
-// Delete a workspace by roomId
-export const deleteWorkspace = async (req, res) => {
-    try {
-        const { roomId } = req.params;
-        await Workspace.findOneAndDelete({ roomId });
-        res.status(200).json({ success: true, message: "Workspace deleted" });
-    } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
-    }
-};
 
 // Update workspace name or language
 export const updateWorkspace = async (req, res) => {
@@ -60,6 +50,18 @@ export const updateWorkspace = async (req, res) => {
             { new: true }
         );
         res.status(200).json({ success: true, workspace });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+
+// Delete a workspace by roomId
+export const deleteWorkspace = async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        await Workspace.findOneAndDelete({ roomId });
+        res.status(200).json({ success: true, message: "Workspace deleted" });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
