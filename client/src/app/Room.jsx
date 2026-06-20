@@ -6,7 +6,8 @@ import { SocketIOProvider } from "y-socket.io"
 import { useParams, useNavigate } from "react-router-dom"
 import {
   Users, Code2, Copy, Check, ArrowLeft, Play,
-  Terminal, Loader2, Trash2, ChevronDown, Circle, Sparkles
+  Terminal, Loader2, Trash2, ChevronDown, Sparkles,
+  PanelLeftClose, PanelLeftOpen, Home
 } from "lucide-react"
 import { useUser } from "@clerk/clerk-react"
 import { useAi } from "./hooks/useAi.js"
@@ -62,6 +63,9 @@ export default function Room() {
   // AI Intent Mode
   const [showAiPanel, setShowAiPanel]   = useState(false)
   const aiHook                          = useAi()
+
+  // Sidebar collapse
+  const [sidebarOpen, setSidebarOpen]   = useState(true)
 
   // Load workspace metadata (name)
   useEffect(() => {
@@ -238,66 +242,97 @@ export default function Room() {
     <main className="h-screen w-full flex bg-[#09090b] text-white font-sans overflow-hidden">
 
       {/* ── Sidebar ── */}
-      <aside className="w-60 bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0">
+      <aside className={`bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 transition-all duration-200
+        ${sidebarOpen ? "w-60" : "w-12"}`}>
 
-        {/* Logo + back */}
-        <div className="px-4 py-3 border-b border-neutral-800 flex items-center gap-2.5">
+        {/* Toggle + Logo row */}
+        <div className="px-2 py-2.5 border-b border-neutral-800 flex items-center gap-2">
           <button
-            onClick={() => navigate("/")}
-            className="p-1.5 rounded-md text-neutral-400 hover:text-white hover:bg-neutral-800 transition"
-            title="Back to Home"
+            onClick={() => setSidebarOpen(p => !p)}
+            className="icon-rail-btn shrink-0"
+            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
           >
-            <ArrowLeft className="w-4 h-4" />
+            {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
           </button>
-          <div className="flex items-center gap-1.5 flex-1 min-w-0">
-            <Code2 className="text-amber-400 w-5 h-5 shrink-0" />
-            <span className="font-bold text-sm tracking-tight truncate">{workspaceName}</span>
+          {sidebarOpen && (
+            <div className="flex items-center gap-1.5 flex-1 min-w-0">
+              <Code2 className="text-amber-400 w-4 h-4 shrink-0" />
+              <span className="font-bold text-sm tracking-tight truncate">{workspaceName}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Nav icons (always visible) */}
+        <div className="flex flex-col items-center gap-1 px-1 py-2 border-b border-neutral-800">
+          <button
+            onClick={() => navigate("/dashboard")}
+            className="icon-rail-btn w-full"
+            title="Dashboard"
+          >
+            <Home className="w-4 h-4" />
+            {sidebarOpen && <span className="text-xs text-neutral-500 ml-2 flex-1 text-left">Dashboard</span>}
+          </button>
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="icon-rail-btn active w-full"
+            title="Collaborators"
+          >
+            <Users className="w-4 h-4" />
+            {sidebarOpen && <span className="text-xs text-neutral-400 ml-2 flex-1 text-left">Collaborators</span>}
+          </button>
+        </div>
+
+        {/* Room ID — only when expanded */}
+        {sidebarOpen && (
+          <div className="px-4 py-2.5 border-b border-neutral-800">
+            <p className="text-[10px] text-neutral-600 mb-1 font-semibold uppercase tracking-widest">Room</p>
+            <p className="text-xs text-neutral-400 font-mono truncate">{roomId}</p>
           </div>
-        </div>
+        )}
 
-        {/* Room ID */}
-        <div className="px-4 py-2.5 border-b border-neutral-800">
-          <p className="text-xs text-neutral-500 mb-1 font-medium uppercase tracking-wider">Room</p>
-          <p className="text-xs text-neutral-300 font-mono truncate">{roomId}</p>
-        </div>
-
-        {/* Collaborators */}
-        <div className="flex-1 overflow-y-auto p-4">
-          <div className="flex items-center gap-1.5 text-neutral-500 mb-3 text-xs font-semibold uppercase tracking-wider">
-            <Users className="w-3.5 h-3.5" />
-            <span>Collaborators</span>
-            <span className="ml-auto bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded-md">{users.length}</span>
+        {/* Collaborators list — only when expanded */}
+        {sidebarOpen && (
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex items-center gap-1.5 text-neutral-600 mb-3 text-[10px] font-semibold uppercase tracking-widest">
+              <Users className="w-3 h-3" />
+              <span>Online</span>
+              <span className="ml-auto bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded-md">{users.length}</span>
+            </div>
+            <ul className="space-y-1">
+              {users.map((u, idx) => (
+                <li key={idx} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-neutral-800 transition-colors">
+                  <div
+                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
+                    style={{ backgroundColor: u.color || "#888" }}
+                  >
+                    {getInitials(u.username)}
+                  </div>
+                  <span className="text-sm font-medium truncate flex-1">{u.username}</span>
+                  {u.username === username && (
+                    <span className="text-[10px] text-neutral-700">you</span>
+                  )}
+                </li>
+              ))}
+            </ul>
           </div>
+        )}
 
-          <ul className="space-y-1.5">
-            {users.map((u, idx) => (
-              <li key={idx} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-neutral-800 transition-colors">
-                {/* Avatar initials */}
-                <div
-                  className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                  style={{ backgroundColor: u.color || "#888" }}
-                >
-                  {getInitials(u.username)}
-                </div>
-                <span className="text-sm font-medium truncate flex-1">{u.username}</span>
-                {u.username === username && (
-                  <span className="text-xs text-neutral-600">you</span>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
+        {/* Spacer when collapsed */}
+        {!sidebarOpen && <div className="flex-1" />}
 
-        {/* Copy link button */}
-        <div className="p-4 border-t border-neutral-800">
+        {/* Copy link */}
+        <div className="p-2 border-t border-neutral-800">
           <button
             onClick={copyLink}
-            className="w-full py-2 px-3 bg-neutral-800 hover:bg-neutral-700 text-sm font-medium rounded-lg flex items-center justify-center gap-2 transition-colors border border-neutral-700"
+            className={`icon-rail-btn w-full ${copied ? "text-emerald-400" : ""}`}
+            title={copied ? "Copied!" : "Copy Room Link"}
           >
-            {copied
-              ? <><Check className="w-3.5 h-3.5 text-green-400" /> <span className="text-green-400">Copied!</span></>
-              : <><Copy className="w-3.5 h-3.5" /> Copy Room Link</>
-            }
+            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            {sidebarOpen && (
+              <span className={`text-xs ml-2 flex-1 text-left ${copied ? "text-emerald-400" : "text-neutral-500"}`}>
+                {copied ? "Copied!" : "Copy link"}
+              </span>
+            )}
           </button>
         </div>
       </aside>
@@ -307,8 +342,21 @@ export default function Room() {
 
         {/* Toolbar */}
         <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center px-4 gap-3 shrink-0">
+
+          {/* Breadcrumb */}
+          <div className="flex items-center gap-1.5 text-sm min-w-0">
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="text-neutral-600 hover:text-neutral-300 transition-colors flex items-center gap-1"
+            >
+              <Home className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-neutral-700">/</span>
+            <span className="text-neutral-400 text-xs font-medium truncate max-w-[140px]">{workspaceName}</span>
+          </div>
+
           {/* Language select */}
-          <div className="relative">
+          <div className="relative ml-2">
             <select
               value={selectedLanguage.id}
               onChange={handleLanguageChange}
@@ -323,25 +371,47 @@ export default function Room() {
 
           <div className="flex-1" />
 
-          {/* AI Intent Mode toggle */}
+          {/* Live collaborator avatar strip */}
+          {users.length > 0 && (
+            <div className="flex items-center -space-x-1.5 mr-1">
+              {users.slice(0, 4).map((u, i) => (
+                <div
+                  key={i}
+                  title={u.username}
+                  className="w-6 h-6 rounded-full border-2 border-neutral-900 flex items-center justify-center text-[9px] font-bold text-white shrink-0"
+                  style={{ backgroundColor: u.color || "#888", zIndex: 10 - i }}
+                >
+                  {getInitials(u.username)}
+                </div>
+              ))}
+              {users.length > 4 && (
+                <div className="w-6 h-6 rounded-full border-2 border-neutral-900 bg-neutral-700 flex items-center justify-center text-[9px] font-bold text-neutral-400">
+                  +{users.length - 4}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* AI toggle */}
           <button
             onClick={() => setShowAiPanel(p => !p)}
             title="Toggle AI Intent Mode"
             className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border
               ${ showAiPanel
-                ? "bg-violet-500/20 text-violet-300 border-violet-500/40 shadow-[0_0_8px_rgba(139,92,246,0.15)]"
+                ? "bg-violet-500/20 text-violet-300 border-violet-500/40 btn-ai-active"
                 : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-violet-500/40 hover:text-violet-300"
               }`}
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            AI
+            <Sparkles className="w-3.5 h-3.5" /> AI
           </button>
 
           {/* Run button */}
           <button
             onClick={handleRunCode}
             disabled={isRunning || !editorReady}
-            className="h-8 px-4 rounded-md bg-amber-500 text-gray-950 font-bold text-xs hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1.5"
+            className="h-8 px-4 rounded-md bg-amber-500 text-gray-950 font-bold text-xs
+                       hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed
+                       transition-colors flex items-center gap-1.5 active:scale-95"
           >
             {isRunning
               ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Running…</>
@@ -453,7 +523,26 @@ export default function Room() {
             )}
           </aside>
         </div>
+
+        {/* ── Status Bar ── */}
+        <div className="status-bar">
+          <span className="text-amber-400">{selectedLanguage.label}</span>
+          <span>UTF-8</span>
+          <div className="status-divider" />
+          <span className="flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            {users.length} {users.length === 1 ? "collaborator" : "collaborators"}
+          </span>
+          {executionMeta && (
+            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusStyle}`}>
+              {executionMeta.status}
+            </span>
+          )}
+          {executionMeta?.time   && <span>{executionMeta.time}s</span>}
+          {executionMeta?.memory && <span>{executionMeta.memory} KB</span>}
+        </div>
       </section>
+
     </main>
   )
 }
