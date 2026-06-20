@@ -4,22 +4,25 @@ import Landing from "./Landing"
 import Dashboard from "./Dashboard"
 import Room from "./Room"
 import NotFound from "./NotFound"
+import { ToastProvider } from "./components/Toast"
 import "./App.css"
 
 function App() {
   return (
     <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Landing />} />
-        <Route path="/dashboard" element={
-          <>
-            <SignedIn><Dashboard /></SignedIn>
-            <SignedOut><Navigate to="/" replace /></SignedOut>
-          </>
-        } />
-        <Route path="/room/:roomId" element={<Room />} />
-        <Route path="*" element={<NotFound />} />
-      </Routes>
+      <ToastProvider>
+        <Routes>
+          <Route path="/" element={<Landing />} />
+          <Route path="/dashboard" element={
+            <>
+              <SignedIn><Dashboard /></SignedIn>
+              <SignedOut><Navigate to="/" replace /></SignedOut>
+            </>
+          } />
+          <Route path="/room/:roomId" element={<Room />} />
+          <Route path="*" element={<NotFound />} />
+        </Routes>
+      </ToastProvider>
     </BrowserRouter>
   )
 }

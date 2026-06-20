@@ -12,6 +12,8 @@ import {
 import { useUser } from "@clerk/clerk-react"
 import { useAi } from "./hooks/useAi.js"
 import AiPanel from "./components/AiPanel.jsx"
+import ShortcutsPanel from "./components/ShortcutsPanel"
+import { useToast } from "./components/Toast"
 
 const COLORS = [
   "#ef4444", "#f97316", "#f59e0b", "#10b981",
@@ -61,14 +63,23 @@ export default function Room() {
   const [isRunning, setIsRunning]       = useState(false)
 
   // AI Intent Mode
-  const [showAiPanel, setShowAiPanel]   = useState(false)
+  const [showAiPanel, setShowAiPanel]   = useState(() => localStorage.getItem("codewave-ai-panel") === "true")
   const aiHook                          = useAi()
 
   // Sidebar collapse
-  const [sidebarOpen, setSidebarOpen]   = useState(true)
+  const [sidebarOpen, setSidebarOpen]   = useState(() => {
+    const saved = localStorage.getItem("codewave-sidebar")
+    return saved !== null ? saved === "true" : true
+  })
 
   // Connection status
   const [connected, setConnected]       = useState(false)
+
+  // Shortcuts, minimap, font size
+  const [showShortcuts, setShowShortcuts] = useState(false)
+  const [showMinimap, setShowMinimap]   = useState(() => localStorage.getItem("codewave-minimap") === "true")
+  const [fontSize, setFontSize]         = useState(() => Number(localStorage.getItem("codewave-fontsize")) || 14)
+  const toast                          = useToast()
 
   // Load workspace metadata (name)
   useEffect(() => {
@@ -80,6 +91,12 @@ export default function Room() {
 
   useEffect(() => { document.title = `${workspaceName} — CodeWeave` }, [workspaceName])
 
+  // Persist user preferences
+  useEffect(() => { localStorage.setItem("codewave-sidebar", String(sidebarOpen)) }, [sidebarOpen])
+  useEffect(() => { localStorage.setItem("codewave-ai-panel", String(showAiPanel)) }, [showAiPanel])
+  useEffect(() => { localStorage.setItem("codewave-minimap", String(showMinimap)) }, [showMinimap])
+  useEffect(() => { localStorage.setItem("codewave-fontsize", String(fontSize)) }, [fontSize])
+
   // Auto-fill username from Clerk
   useEffect(() => {
     if (isLoaded && user) {
@@ -88,6 +105,33 @@ export default function Room() {
       sessionStorage.setItem("username", name)
     }
   }, [isLoaded, user])
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e) => {
+      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
+        setShowShortcuts(p => !p)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
+        e.preventDefault()
+        setSidebarOpen(p => !p)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "i") {
+        e.preventDefault()
+        setShowAiPanel(p => !p)
+        return
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "m") {
+        e.preventDefault()
+        setShowMinimap(p => !p)
+        return
+      }
+    }
+    window.addEventListener("keydown", handler)
+    return () => window.removeEventListener("keydown", handler)
+  }, [])
 
   const ydoc      = useMemo(() => new Y.Doc(), [])
   const yText     = useMemo(() => ydoc.getText("monaco"), [ydoc])
@@ -104,6 +148,7 @@ export default function Room() {
   const copyLink = () => {
     navigator.clipboard.writeText(window.location.href)
     setCopied(true)
+    toast("Room link copied to clipboard", "success")
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -201,6 +246,13 @@ export default function Room() {
     }
   }, [username, editorReady, roomId, ydoc, yText, userColor])
 
+  const handleReconnect = () => {
+    if (providerRef.current) {
+      providerRef.current.connect()
+      toast("Attempting to reconnect...", "info")
+    }
+  }
+
   // ── Join screen ──
   if (!username) {
     return (
@@ -261,7 +313,15 @@ export default function Room() {
 
   // ── Main Editor View ──
   return (
-    <main className="h-screen w-full flex bg-[#09090b] text-white font-sans overflow-hidden">
+    <main className="h-screen w-full flex bg-[#09090b] text-white font-sans overflow-hidden relative">
+
+      {/* Connection banner */}
+      {username && !connected && (
+        <div className="connection-banner">
+          <span>Disconnected from collaboration server — changes won&apos;t sync</span>
+          <button onClick={handleReconnect}>Reconnect</button>
+        </div>
+      )}
 
       {/* ── Sidebar ── */}
       <aside className={`bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 transition-all duration-200
@@ -414,6 +474,19 @@ export default function Room() {
             </div>
           )}
 
+          {/* Minimap toggle */}
+          <button
+            onClick={() => setShowMinimap(p => !p)}
+            title="Toggle minimap"
+            className={`h-8 px-2.5 rounded-md text-[10px] font-bold transition-all duration-150 border
+              ${ showMinimap
+                ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
+                : "bg-neutral-800 text-neutral-500 border-neutral-700 hover:text-neutral-300 hover:border-neutral-600"
+              }`}
+          >
+            Map
+          </button>
+
           {/* AI toggle */}
           <button
             onClick={() => setShowAiPanel(p => !p)}
@@ -425,6 +498,16 @@ export default function Room() {
               }`}
           >
             <Sparkles className="w-3.5 h-3.5" /> AI
+          </button>
+
+          {/* Shortcuts */}
+          <button
+            onClick={() => setShowShortcuts(p => !p)}
+            title="Keyboard shortcuts"
+            className="h-8 px-2 rounded-md text-xs font-bold text-neutral-500 border border-neutral-700
+                       hover:text-neutral-300 hover:border-neutral-600 transition-all bg-neutral-800"
+          >
+            ?
           </button>
 
           {/* Run button */}
@@ -443,10 +526,10 @@ export default function Room() {
         </header>
 
         {/* Editor + I/O panel */}
-        <div className="flex-1 w-full min-h-0 flex">
+        <div className="flex-1 w-full min-h-0 flex flex-col lg:flex-row">
 
           {/* Monaco editor */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-h-0 min-h-[300px] lg:min-h-0">
             <Editor
               height="100%"
               width="100%"
@@ -455,9 +538,9 @@ export default function Room() {
               theme="vs-dark"
               onMount={handleMount}
               options={{
-                minimap: { enabled: false },
+                minimap: { enabled: showMinimap },
                 padding: { top: 16 },
-                fontSize: 14,
+                fontSize: fontSize,
                 fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
                 fontLigatures: true,
                 scrollBeyondLastLine: false,
@@ -466,7 +549,7 @@ export default function Room() {
           </div>
 
           {/* I/O panel + AI panel */}
-          <aside className="w-80 xl:w-96 bg-neutral-950 border-l border-neutral-800 flex flex-col shrink-0">
+          <aside className="w-full lg:w-80 xl:w-96 bg-neutral-950 border-t lg:border-t-0 lg:border-l border-neutral-800 flex flex-col shrink-0">
 
             {/* ── Stdin + Output (always visible) ── */}
             <div className={`flex flex-col min-h-0 transition-all duration-200 ${showAiPanel ? "h-1/2" : "flex-1"}`}>
@@ -565,6 +648,9 @@ export default function Room() {
           {executionMeta?.memory && <span>{executionMeta.memory} KB</span>}
         </div>
       </section>
+
+      {/* Shortcuts panel */}
+      {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
 
     </main>
   )

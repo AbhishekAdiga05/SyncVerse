@@ -6,6 +6,7 @@ import {
   Trash2, Clock, ArrowRight, Search, Edit3, Share2,
 } from "lucide-react"
 import { UserButton, useUser } from "@clerk/clerk-react"
+import { useToast } from "./components/Toast"
 
 /* ── Helpers ───────────────────────────────────────────────────── */
 const LANG_META = {
@@ -123,6 +124,7 @@ const LANG_OPTIONS = [
 export default function Dashboard() {
   const navigate = useNavigate()
   const { user } = useUser()
+  const toast = useToast()
 
   const [workspaces, setWorkspaces]     = useState([])
   const [loading, setLoading]           = useState(true)
@@ -155,7 +157,10 @@ export default function Dashboard() {
         body: JSON.stringify({ roomId: id, ownerId: user.id, name: workspaceName.trim() || "Untitled Workspace", language: selectedLang }),
       })
       const data = await res.json()
-      if (data.success) setWorkspaces(prev => [data.workspace, ...prev])
+      if (data.success) {
+        setWorkspaces(prev => [data.workspace, ...prev])
+        toast("Workspace created", "success")
+      }
     } catch {}
     setCreating(false)
     setWorkspaceName("")
@@ -170,7 +175,10 @@ export default function Dashboard() {
   const handleDelete = async (roomId) => {
     setWorkspaces(prev => prev.filter(w => w.roomId !== roomId))
     setDeleteConfirm(null)
-    try { await fetch(`http://localhost:3000/api/workspaces/${roomId}`, { method: "DELETE" }) } catch {}
+    try {
+      await fetch(`http://localhost:3000/api/workspaces/${roomId}`, { method: "DELETE" })
+      toast("Workspace deleted", "info")
+    } catch {}
   }
 
   const handleRename = async (roomId, newName) => {
