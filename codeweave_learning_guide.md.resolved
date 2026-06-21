@@ -589,8 +589,208 @@ The AI integration added **0 new architectural patterns**. Every decision mirror
 
 
 
-## 🔴 PHASE 7: Codebase Visualization (Pending)
-*(This section will be updated when we build the React Flow architecture map.)*
+## 🟢 PHASE 7: Codebase Visualization (React Flow)
+
+This phase transforms the architecture documentation into an **interactive, live diagram** that can be walked through during any interview — showing every layer, every data flow, and every design decision as a navigable graph.
+
+### Concept 22: React Flow & Custom Node Components
+
+**The Problem:** Static diagrams (Mermaid, draw.io, Lucidchart) are read-only. You can't hover to get context, can't click to isolate a flow, and they drift out of date. We need the architecture map to be a living part of the codebase.
+
+**The Solution:** **React Flow** — a React library for building node-based interactive graphs. Every element is a React component, so nodes can hold state, trigger animations, and display rich tooltips.
+
+```jsx
+// Visualizer.jsx — registering our custom node type
+const NODE_TYPES = { architectureNode: ArchitectureNode }
+
+<ReactFlow
+  nodes={liveNodes}
+  edges={liveEdges}
+  nodeTypes={NODE_TYPES}   // ← React Flow renders our component instead of its default node
+  fitView
+  defaultEdgeOptions={{ type: 'smoothstep', markerEnd: { type: 'arrowclosed' } }}
+>
+  <Background variant={BackgroundVariant.Dots} />
+  <Controls />
+  <MiniMap nodeColor={node => LAYER_COLORS[node.data?.layer]} />
+</ReactFlow>
+```
+
+**Custom node anatomy (`ArchitectureNode.jsx`):**
+```jsx
+function ArchitectureNode({ data }) {
+  const [showTooltip, setShowTooltip] = useState(false)
+  return (
+    <div className="arch-node" style={{ '--node-color': LAYER_COLORS[data.layer] }}
+         onMouseEnter={() => setShowTooltip(true)}
+         onMouseLeave={() => setShowTooltip(false)}>
+      <Handle type="target" position={Position.Left} />   {/* ← React Flow connection point */}
+      <Handle type="source" position={Position.Right} />
+      <span className="arch-node-badge">{LAYER_LABELS[data.layer]}</span>
+      <div className="arch-node-title">
+        <span>{data.icon}</span>
+        <span className="arch-node-label">{data.label}</span>
+      </div>
+      {showTooltip && (
+        <div className="arch-node-tooltip">
+          <p>{data.description}</p>
+          <p className="arch-tooltip-tip">{data.interviewTip}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+```
+
+> **Interview Q:** *"How did you document your architecture for maintainability?"*
+>
+> **Your Answer:** *"I built an interactive architecture visualizer using React Flow. Instead of a static diagram, every component in the system is a draggable, hoverable node. Hovering reveals a description of what the component does and an interview-ready explanation of the design decision. It's a living document — when I add a new feature, I add a node and edges to the data file and the graph updates automatically."*
+
+---
+
+### Concept 23: Data-Driven Architecture Graphs
+
+**The Problem:** Mixing rendering logic with architectural data makes the graph impossible to maintain. Adding a new node means editing the JSX directly.
+
+**The Solution:** A single `architectureData.js` file that is **pure data** — zero rendering logic. The graph is fully described as arrays of node objects and edge objects.
+
+```js
+// architectureData.js — pure data, zero rendering
+export const initialNodes = [
+  {
+    id: 'room',
+    type: 'architectureNode',    // ← maps to our custom React component
+    position: { x: 480, y: 380 },
+    data: {
+      label: 'Room.jsx',
+      layer: 'frontend',         // ← drives color, badge text, minimap color
+      icon: '📝',
+      file: 'client/src/app/Room.jsx',
+      description: 'Core collaborative editor page...',
+      interviewTip: 'useParams() extracts roomId which becomes the y-socket.io namespace...',
+    },
+  },
+  // ... 24 more nodes
+]
+
+export const initialEdges = [
+  {
+    id: 'e-room-monaco',
+    source: 'room',
+    target: 'monaco',
+    animated: true,              // ← dashed, moving animation = live data flow
+    data: { flowType: ['collab', 'execution'] },  // ← used by flow-mode filter
+    style: { stroke: '#f59e0b' },
+  },
+  // ... 30+ more edges
+]
+```
+
+**The architectural payoff:** To add Phase 8 (Docker deployment), we add a `DockerCompose` node and edges to `server` and `mongodb` in `architectureData.js`. The entire rendering layer is untouched.
+
+> **Interview Q:** *"How do you keep your architecture documentation from going stale?"*
+>
+> **Your Answer:** *"I made the documentation part of the codebase — a declarative data file that drives the React Flow graph. There's zero duplication: the data is the diagram. When I add a new feature, I extend the data file alongside the feature code. Because it's a real React app, not a PNG, I can see immediately if a connection is broken or a node is orphaned."*
+
+---
+
+### Concept 24: Flow Mode Filtering (Selective Graph Highlighting)
+
+**The Problem:** A complete architecture diagram with 25 nodes and 35 edges is visually overwhelming. During an interview, you need to trace one specific data path (e.g., "show me how code execution works") without confusing the audience.
+
+**The Solution:** **Flow Mode buttons** — 5 modes (All / Collaboration / Execution / AI / Auth) that dim all non-participating nodes and edges, revealing only the relevant path.
+
+```js
+// architectureData.js — each edge declares which flow modes it participates in
+{ id: 'e-room-http-exec', source: 'room', target: 'http_rest',
+  data: { flowType: ['execution'] }, animated: true }
+
+{ id: 'e-aipanel-http', source: 'aipanel', target: 'http_rest',
+  data: { flowType: ['ai'] }, animated: true }
+
+// FLOW_MODES declares which node IDs are "active" per mode
+export const FLOW_MODES = {
+  execution: {
+    color: '#10b981',
+    activeNodes: ['browser', 'room', 'monaco', 'http_rest', 'express',
+                  'execution_route', 'execution_ctrl', 'judge0'],
+  },
+  // ...
+}
+```
+
+```jsx
+// Visualizer.jsx — applying dim via useMemo (instant, no re-render cascade)
+const computedNodes = useMemo(() => {
+  const mode = FLOW_MODES[activeMode]
+  return initialNodes.map(node => ({
+    ...node,
+    data: {
+      ...node.data,
+      // null = "All" mode → nothing is dimmed
+      dimmed: mode.activeNodes !== null && !mode.activeNodes.includes(node.id),
+    },
+  }))
+}, [activeMode])
+```
+
+```jsx
+// ArchitectureNode.jsx — reads the dimmed prop
+<div className="arch-node" style={{ opacity: data.dimmed ? 0.18 : 1 }}>
+```
+
+**The result:** Click "Execution" and only the 8 nodes in the code execution path remain fully visible — `Room.jsx → HTTP REST → Express → execution.routes.js → execution.controller.js → Judge0 CE`. Every other node fades to 18% opacity. The interviewer sees exactly what you're explaining.
+
+> **Interview Q:** *"How would you explain your system to a new engineer?"*
+>
+> **Your Answer:** *"I'd open the architecture visualizer and walk them through each flow mode. For real-time collaboration, I'd click 'Collaboration' and show the path: Room.jsx initializes a Yjs Doc, the SocketIOProvider connects to the Express WebSocket server, and the y-socket.io handler on the server hooks into the document lifecycle to persist to MongoDB. Every node has a tooltip with the exact interview explanation. The new engineer can explore it at their own pace without needing to read source code first."*
+
+---
+
+### Concept 25: `useMemo` for Performance-Safe Graph Filtering
+
+**The Problem:** Recalculating 25+ nodes and 35+ edges on every render — or worse, triggering a full React state update — would cause visible lag when switching flow modes.
+
+**The Solution:** `useMemo` computes the derived node/edge arrays only when `activeMode` changes. React Flow receives stable object references when the mode hasn't changed, preventing unnecessary re-renders of all nodes.
+
+```jsx
+// Visualizer.jsx — both arrays are memoized independently
+const liveNodes = useMemo(() => computedNodes, [computedNodes])
+const liveEdges = useMemo(() => computedEdges, [computedEdges])
+// computedNodes/computedEdges themselves are already useMemo-wrapped
+// → the dependency chain: activeMode → computedNodes → liveNodes
+// → only fires when activeMode button is clicked
+```
+
+> **Interview Q:** *"How did you handle performance in the React Flow visualizer?"*
+>
+> **Your Answer:** *"I used useMemo to derive the filtered node and edge arrays from the active flow mode. React Flow uses reference equality to decide whether to re-render nodes — if the array reference hasn't changed, React Flow skips the entire reconciliation pass for unaffected nodes. I also wrapped ArchitectureNode in React.memo so individual node re-renders are skipped unless their data prop changes. This keeps mode-switching instantaneous even at 25+ nodes."*
+
+---
+
+### Architecture Added in Phase 7
+
+```
+client/src/app/
+├── Visualizer.jsx                    ← Full-screen React Flow page (new)
+├── components/
+│   └── ArchitectureNode.jsx          ← Custom node card with tooltip (new)
+└── data/
+    └── architectureData.js           ← All nodes, edges, flow modes, legend (new)
+```
+
+**New route added to `App.jsx`:**
+```jsx
+<Route path="/visualizer" element={<Visualizer />} />
+```
+No auth guard — it's a public showcase page.
+
+**Tech added:**
+| Package | Why |
+|---|---|
+| `reactflow@11` | Stable with React 19 + Vite ESM; provides nodes, edges, controls, minimap, background |
+
+
 
 ## 🔴 PHASE 8: Dockerized Deployment (Pending)
 *(This section will be updated when we containerize and deploy the full stack.)*

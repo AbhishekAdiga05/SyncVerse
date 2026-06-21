@@ -1,4 +1,5 @@
 import { Editor } from "@monaco-editor/react"
+import { io as socketIO } from "socket.io-client"
 import { MonacoBinding } from "y-monaco"
 import { useRef, useMemo, useState, useEffect, useCallback } from "react"
 import * as Y from "yjs"
@@ -7,11 +8,12 @@ import { useParams, useNavigate } from "react-router-dom"
 import {
   Users, Code2, Copy, Check, ArrowLeft, Play,
   Terminal, Loader2, Trash2, ChevronDown, Sparkles,
-  PanelLeftClose, PanelLeftOpen, Home
+  PanelLeftClose, PanelLeftOpen, Home, MessageSquare
 } from "lucide-react"
 import { useUser } from "@clerk/clerk-react"
 import { useAi } from "./hooks/useAi.js"
 import AiPanel from "./components/AiPanel.jsx"
+import ChatPanel from "./components/ChatPanel.jsx"
 import ShortcutsPanel from "./components/ShortcutsPanel"
 import { useToast } from "./components/Toast"
 
@@ -65,6 +67,11 @@ export default function Room() {
   // AI Intent Mode
   const [showAiPanel, setShowAiPanel]   = useState(() => localStorage.getItem("codewave-ai-panel") === "true")
   const aiHook                          = useAi()
+
+  // Live Chat
+  const [showChat, setShowChat]         = useState(false)
+  const [unreadCount, setUnreadCount]   = useState(0)
+  const chatSocketRef                   = useRef(null)
 
   // Sidebar collapse
   const [sidebarOpen, setSidebarOpen]   = useState(() => {
@@ -136,6 +143,19 @@ export default function Room() {
   const ydoc      = useMemo(() => new Y.Doc(), [])
   const yText     = useMemo(() => ydoc.getText("monaco"), [ydoc])
   const userColor = useMemo(() => COLORS[Math.floor(Math.random() * COLORS.length)], [])
+
+  // Chat socket — separate connection from Yjs provider
+  useEffect(() => {
+    if (!username) return
+    const s = socketIO("http://localhost:3000")
+    chatSocketRef.current = s
+    return () => s.disconnect()
+  }, [username])
+
+  // Reset unread count when chat is opened
+  useEffect(() => {
+    if (showChat) setUnreadCount(0)
+  }, [showChat])
 
   const handleJoin = (e) => {
     e.preventDefault()
@@ -487,6 +507,23 @@ export default function Room() {
             Map
           </button>
 
+          {/* Chat toggle */}
+          <button
+            onClick={() => setShowChat(p => !p)}
+            title="Toggle Room Chat"
+            id="room-chat-toggle"
+            className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border relative
+              ${ showChat
+                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+                : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-emerald-500/40 hover:text-emerald-300"
+              }`}
+          >
+            <MessageSquare className="w-3.5 h-3.5" /> Chat
+            {unreadCount > 0 && !showChat && (
+              <span className="chat-unread-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+            )}
+          </button>
+
           {/* AI toggle */}
           <button
             onClick={() => setShowAiPanel(p => !p)}
@@ -548,11 +585,14 @@ export default function Room() {
             />
           </div>
 
-          {/* I/O panel + AI panel */}
+          {/* I/O panel + AI panel + Chat panel */}
           <aside className="w-full lg:w-80 xl:w-96 bg-neutral-950 border-t lg:border-t-0 lg:border-l border-neutral-800 flex flex-col shrink-0">
 
-            {/* ── Stdin + Output (always visible) ── */}
-            <div className={`flex flex-col min-h-0 transition-all duration-200 ${showAiPanel ? "h-1/2" : "flex-1"}`}>
+            {/* ── Stdin + Output ── */}
+            <div className={`flex flex-col min-h-0 transition-all duration-200
+              ${ (showAiPanel && showChat) ? "h-1/3"
+                : (showAiPanel || showChat) ? "h-1/2"
+                : "flex-1" }`}>
 
               {/* Input */}
               <div className="h-2/5 min-h-0 border-b border-neutral-800 flex flex-col">
@@ -577,7 +617,6 @@ export default function Room() {
 
                   <div className="flex-1" />
 
-                  {/* Execution meta */}
                   {executionMeta && (
                     <div className="flex items-center gap-2">
                       <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyle}`}>
@@ -592,7 +631,6 @@ export default function Room() {
                     </div>
                   )}
 
-                  {/* Clear button */}
                   {output && (
                     <button
                       onClick={() => { setOutput(""); setExecutionMeta(null); }}
@@ -613,13 +651,26 @@ export default function Room() {
               </div>
             </div>
 
-            {/* ── AI Panel (slides in when toggled) ── */}
+            {/* ── Chat Panel ── */}
+            {showChat && (
+              <div className="flex-1 min-h-0 border-t border-emerald-500/20">
+                <ChatPanel
+                  socket={chatSocketRef.current}
+                  roomId={roomId}
+                  username={username}
+                  userColor={userColor}
+                  onUnread={() => !showChat && setUnreadCount(c => c + 1)}
+                />
+              </div>
+            )}
+
+            {/* ── AI Panel ── */}
             {showAiPanel && (
               <div className="flex-1 min-h-0 border-t border-violet-500/20">
                 <AiPanel
                   editorRef={editorRef}
                   language={selectedLanguage.monaco}
-                  stderr={output}   // reuse output state — contains stderr from Judge0
+                  stderr={output}
                   aiState={aiHook}
                   onTrigger={aiHook.triggerAi}
                   onClear={aiHook.clearAi}

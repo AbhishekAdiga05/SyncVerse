@@ -5,6 +5,7 @@ import { Server } from "socket.io";
 import cors from "cors";
 import { connectDB } from "./config/db.js";
 import { initializeYjsSockets } from "./sockets/yjs.socket.js";
+import { initializeChatSockets } from "./sockets/chat.socket.js";
 import workspaceRoutes from "./routes/workspace.routes.js";
 import executionRoutes from "./routes/execution.routes.js";
 import aiRoutes from "./routes/ai.routes.js";
@@ -30,8 +31,9 @@ const io = new Server(httpServer, {
     }
 });
 
-// 4. Initialize Yjs Sockets
+// 4. Initialize Yjs + Chat Sockets
 initializeYjsSockets(io);
+initializeChatSockets(io);
 
 // 5. Routes
 app.use("/api/workspaces", workspaceRoutes);
