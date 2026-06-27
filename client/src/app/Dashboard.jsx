@@ -139,7 +139,7 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (!user) return
-    setLoading(true)
+    setTimeout(() => setLoading(true), 0)
     fetch(`http://localhost:3000/api/workspaces/${user.id}`)
       .then(r => r.json())
       .then(data => { if (data.success) setWorkspaces(data.workspaces) })
@@ -161,7 +161,7 @@ export default function Dashboard() {
         setWorkspaces(prev => [data.workspace, ...prev])
         toast("Workspace created", "success")
       }
-    } catch {}
+    } catch (err) { console.error("Create workspace failed", err) }
     setCreating(false)
     setWorkspaceName("")
     navigate(`/room/${id}`)
@@ -178,7 +178,7 @@ export default function Dashboard() {
     try {
       await fetch(`http://localhost:3000/api/workspaces/${roomId}`, { method: "DELETE" })
       toast("Workspace deleted", "info")
-    } catch {}
+    } catch (err) { console.error("Delete failed", err) }
   }
 
   const handleRename = async (roomId, newName) => {
@@ -189,7 +189,7 @@ export default function Dashboard() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName }),
       })
-    } catch {}
+    } catch (err) { console.error("Rename failed", err) }
   }
 
   const filtered = workspaces.filter(w =>

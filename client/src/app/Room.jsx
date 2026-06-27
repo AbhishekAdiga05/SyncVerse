@@ -1,20 +1,21 @@
 import { Editor } from "@monaco-editor/react"
 import { io as socketIO } from "socket.io-client"
 import { MonacoBinding } from "y-monaco"
-import { useRef, useMemo, useState, useEffect, useCallback } from "react"
+import { useRef, useMemo, useState, useEffect } from "react"
 import * as Y from "yjs"
 import { SocketIOProvider } from "y-socket.io"
 import { useParams, useNavigate } from "react-router-dom"
 import {
-  Users, Code2, Copy, Check, ArrowLeft, Play,
+  Users, Code2, Copy, Check, Play,
   Terminal, Loader2, Trash2, ChevronDown, Sparkles,
-  PanelLeftClose, PanelLeftOpen, Home, MessageSquare
+  PanelLeftClose, PanelLeftOpen, Home, MessageSquare, PenTool
 } from "lucide-react"
 import { useUser } from "@clerk/clerk-react"
 import { useAi } from "./hooks/useAi.js"
 import AiPanel from "./components/AiPanel.jsx"
 import ChatPanel from "./components/ChatPanel.jsx"
 import ShortcutsPanel from "./components/ShortcutsPanel"
+import WhiteboardPanel from "./components/WhiteboardPanel.jsx"
 import { useToast } from "./components/Toast"
 
 const COLORS = [
@@ -71,7 +72,7 @@ export default function Room() {
   // Live Chat
   const [showChat, setShowChat]         = useState(false)
   const [unreadCount, setUnreadCount]   = useState(0)
-  const chatSocketRef                   = useRef(null)
+  const [chatSocket, setChatSocket]       = useState(null)
 
   // Sidebar collapse
   const [sidebarOpen, setSidebarOpen]   = useState(() => {
@@ -82,10 +83,13 @@ export default function Room() {
   // Connection status
   const [connected, setConnected]       = useState(false)
 
+  // Whiteboard toggle
+  const [showWhiteboard, setShowWhiteboard] = useState(false)
+
   // Shortcuts, minimap, font size
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [showMinimap, setShowMinimap]   = useState(() => localStorage.getItem("codewave-minimap") === "true")
-  const [fontSize, setFontSize]         = useState(() => Number(localStorage.getItem("codewave-fontsize")) || 14)
+  const [fontSize]         = useState(() => Number(localStorage.getItem("codewave-fontsize")) || 14)
   const toast                          = useToast()
 
   // Load workspace metadata (name)
@@ -108,8 +112,10 @@ export default function Room() {
   useEffect(() => {
     if (isLoaded && user) {
       const name = user.firstName || user.username || "Authenticated User"
-      setUsername(name)
-      sessionStorage.setItem("username", name)
+      setTimeout(() => {
+        setUsername(name)
+        sessionStorage.setItem("username", name)
+      }, 0)
     }
   }, [isLoaded, user])
 
@@ -135,6 +141,11 @@ export default function Room() {
         setShowMinimap(p => !p)
         return
       }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "b") {
+        e.preventDefault()
+        setShowWhiteboard(p => !p)
+        return
+      }
     }
     window.addEventListener("keydown", handler)
     return () => window.removeEventListener("keydown", handler)
@@ -142,20 +153,17 @@ export default function Room() {
 
   const ydoc      = useMemo(() => new Y.Doc(), [])
   const yText     = useMemo(() => ydoc.getText("monaco"), [ydoc])
-  const userColor = useMemo(() => COLORS[Math.floor(Math.random() * COLORS.length)], [])
+  const [userColor] = useState(() => COLORS[Math.floor(Math.random() * COLORS.length)])
 
   // Chat socket — separate connection from Yjs provider
   useEffect(() => {
     if (!username) return
     const s = socketIO("http://localhost:3000")
-    chatSocketRef.current = s
+    setTimeout(() => setChatSocket(s), 0)
     return () => s.disconnect()
   }, [username])
 
-  // Reset unread count when chat is opened
-  useEffect(() => {
-    if (showChat) setUnreadCount(0)
-  }, [showChat])
+  // (Unread count is now reset in the toggle onClick)
 
   const handleJoin = (e) => {
     e.preventDefault()
@@ -507,9 +515,27 @@ export default function Room() {
             Map
           </button>
 
+          {/* Whiteboard toggle */}
+          <button
+            onClick={() => setShowWhiteboard(p => !p)}
+            title="Toggle Whiteboard"
+            className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border
+              ${ showWhiteboard
+                ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
+                : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-sky-500/40 hover:text-sky-300"
+              }`}
+          >
+            <PenTool className="w-3.5 h-3.5" /> Board
+          </button>
+
           {/* Chat toggle */}
           <button
-            onClick={() => setShowChat(p => !p)}
+            onClick={() => {
+              setShowChat(p => {
+                if (!p) setUnreadCount(0);
+                return !p;
+              });
+            }}
             title="Toggle Room Chat"
             id="room-chat-toggle"
             className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border relative
@@ -565,24 +591,28 @@ export default function Room() {
         {/* Editor + I/O panel */}
         <div className="flex-1 w-full min-h-0 flex flex-col lg:flex-row">
 
-          {/* Monaco editor */}
+          {/* Monaco editor / Whiteboard */}
           <div className="flex-1 min-h-0 min-h-[300px] lg:min-h-0">
-            <Editor
-              height="100%"
-              width="100%"
-              language={selectedLanguage.monaco}
-              defaultValue="// Start coding collaboratively here..."
-              theme="vs-dark"
-              onMount={handleMount}
-              options={{
-                minimap: { enabled: showMinimap },
-                padding: { top: 16 },
-                fontSize: fontSize,
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                fontLigatures: true,
-                scrollBeyondLastLine: false,
-              }}
-            />
+            {showWhiteboard ? (
+              <WhiteboardPanel ydoc={ydoc} />
+            ) : (
+              <Editor
+                height="100%"
+                width="100%"
+                language={selectedLanguage.monaco}
+                defaultValue="// Start coding collaboratively here..."
+                theme="vs-dark"
+                onMount={handleMount}
+                options={{
+                  minimap: { enabled: showMinimap },
+                  padding: { top: 16 },
+                  fontSize: fontSize,
+                  fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                  fontLigatures: true,
+                  scrollBeyondLastLine: false,
+                }}
+              />
+            )}
           </div>
 
           {/* I/O panel + AI panel + Chat panel */}
@@ -655,7 +685,7 @@ export default function Room() {
             {showChat && (
               <div className="flex-1 min-h-0 border-t border-emerald-500/20">
                 <ChatPanel
-                  socket={chatSocketRef.current}
+                  socket={chatSocket}
                   roomId={roomId}
                   username={username}
                   userColor={userColor}

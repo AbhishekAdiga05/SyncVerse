@@ -2,22 +2,23 @@ import { useEffect, useState, useRef } from "react"
 import { useNavigate } from "react-router-dom"
 import {
   Code2, ExternalLink, ArrowRight, Users, Play, Sparkles,
-  Share2, Edit3, Zap, CheckCircle, Copy, Globe
+  Share2, Edit3, Zap, CheckCircle
 } from "lucide-react"
-import { SignedIn, SignedOut, SignInButton, useUser } from "@clerk/clerk-react"
+import { SignedIn, SignedOut, useUser, useClerk } from "@clerk/clerk-react"
+
+const ANIMATED_LINES = [
+  ["// Priya is typing...", "text-neutral-500"],
+  ["function merge(doc) {", "text-sky-300"],
+  ["  const conflicts = ", "text-white"],
+  ["  doc.getConflicts()", "text-white"],
+  ["  if (conflicts.length === 0)", "text-white"],
+  ["    return doc", "text-white"],
+  ["  return doc.resolveAll()", "text-white"],
+  ["}", "text-sky-300"],
+]
 
 /* ── Animated Code Block ───────────────────────────────────── */
 function AnimatedCode() {
-  const lines = [
-    ["// Priya is typing...", "text-neutral-500"],
-    ["function merge(doc) {", "text-sky-300"],
-    ["  const conflicts = ", "text-white"],
-    ["    doc.getConflicts()", "text-white"],
-    ["  if (conflicts.length === 0)", "text-white"],
-    ["    return doc", "text-white"],
-    ["  return doc.resolveAll()", "text-white"],
-    ["}", "text-sky-300"],
-  ]
 
   const [lineIdx, setLineIdx] = useState(0)
   const [charIdx, setCharIdx] = useState(0)
@@ -25,9 +26,9 @@ function AnimatedCode() {
 
   useEffect(() => {
     if (phase === "typing") {
-      const line = lines[lineIdx]
+      const line = ANIMATED_LINES[lineIdx]
       if (!line || charIdx >= line[0].length) {
-        if (lineIdx >= lines.length - 1) {
+        if (lineIdx >= ANIMATED_LINES.length - 1) {
           const t = setTimeout(() => setPhase("pause"), 500)
           return () => clearTimeout(t)
         }
@@ -56,16 +57,16 @@ function AnimatedCode() {
         </span>
       </div>
       <div className="text-sm leading-7">
-        {lines.slice(0, lineIdx).map((line, i) => (
+        {ANIMATED_LINES.slice(0, lineIdx).map((line, i) => (
           <div key={i} className="flex">
             <span className="line-numbers">{String(i + 1).padStart(2, " ")}</span>
             <span className={line[1]}>{line[0]}</span>
           </div>
         ))}
-        {lines[lineIdx] && (
+        {ANIMATED_LINES[lineIdx] && (
           <div className="flex">
             <span className="line-numbers">{String(lineIdx + 1).padStart(2, " ")}</span>
-            <span className={lines[lineIdx][1]}>{lines[lineIdx][0].slice(0, charIdx)}</span>
+            <span className={ANIMATED_LINES[lineIdx][1]}>{ANIMATED_LINES[lineIdx][0].slice(0, charIdx)}</span>
             <span className="cursor-blink" />
           </div>
         )}
@@ -114,7 +115,7 @@ const FEATURES = [
   {
     icon: <Sparkles className="w-5 h-5" />,
     title: "AI-assisted development",
-    desc: "Explain, refactor, generate, or debug selected code with Google Gemini. Context-aware responses that never write to your document without your consent.",
+    desc: "Explain, refactor, generate, or debug selected code with Kimi. Context-aware responses that never write to your document without your consent.",
     highlights: ["Explain complex code in plain language", "Refactor for readability & performance", "Generate code from natural language"],
   },
 ]
@@ -141,7 +142,8 @@ const STEPS = [
 /* ── Component ─────────────────────────────────────────────── */
 export default function Landing() {
   const navigate = useNavigate()
-  const { user } = useUser()
+  const { isSignedIn } = useUser()
+  const { openSignIn, openSignUp } = useClerk()
   const [scrolled, setScrolled] = useState(false)
 
   const featuresRef = useRef(null)
@@ -160,7 +162,11 @@ export default function Landing() {
   }, [])
 
   const handleGetStarted = () => {
-    navigate("/dashboard")
+    if (isSignedIn) {
+      navigate("/dashboard")
+    } else {
+      openSignIn()
+    }
   }
 
   return (
@@ -212,11 +218,9 @@ export default function Landing() {
             </button>
           </SignedIn>
           <SignedOut>
-            <SignInButton mode="modal">
-              <button className="text-sm text-neutral-400 hover:text-white transition-colors px-2">
-                Sign in
-              </button>
-            </SignInButton>
+            <button onClick={() => openSignIn()} className="text-sm text-neutral-400 hover:text-white transition-colors px-2">
+              Sign in
+            </button>
           </SignedOut>
         </div>
       </nav>
@@ -237,7 +241,7 @@ export default function Landing() {
               <span className="gradient-text">in real time.</span>
             </h1>
             <p className="text-base sm:text-lg text-neutral-400 max-w-lg leading-relaxed mb-8">
-              A collaborative code editor with CRDT-powered syncing, multi-language execution in the browser, and AI-assisted development via Gemini.
+              A collaborative code editor with CRDT-powered syncing, multi-language execution in the browser, and AI-assisted development via Kimi.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
               <button
@@ -247,13 +251,11 @@ export default function Landing() {
                 Get Started <ArrowRight className="w-4 h-4" />
               </button>
               <SignedOut>
-                <SignInButton mode="modal">
-                  <button className="px-6 py-3 rounded-xl border border-neutral-700 text-neutral-300
+                <button onClick={() => openSignUp()} className="px-6 py-3 rounded-xl border border-neutral-700 text-neutral-300
                              font-semibold text-base hover:border-neutral-500 hover:text-white
                              transition-all bounce">
-                    Create free account
-                  </button>
-                </SignInButton>
+                  Create free account
+                </button>
               </SignedOut>
               <SignedIn>
                 <a href="#features"
@@ -441,7 +443,7 @@ export default function Landing() {
         <div className="flex flex-wrap justify-center gap-2">
           {[
             "React 19", "Yjs CRDTs", "Monaco Editor", "Socket.io",
-            "Node.js", "MongoDB", "Judge0 CE", "Gemini API", "Clerk Auth",
+            "Node.js", "MongoDB", "Judge0 CE", "OpenRouter Kimi API", "Clerk Auth",
           ].map((t) => (
             <span key={t}
               className="px-3.5 py-1.5 rounded-full text-xs font-mono text-neutral-400

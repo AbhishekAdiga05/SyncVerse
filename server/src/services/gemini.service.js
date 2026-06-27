@@ -1,7 +1,5 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-// Initialise once — reused across all requests
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+// Using OpenRouter instead of direct Gemini API
+import dotenv from "dotenv";
 
 /**
  * Builds a focused system prompt for each AI action.
@@ -9,7 +7,7 @@ const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
  *
  * @param {"explain"|"refactor"|"generate"|"debug"} action
  * @param {{ code?: string, language?: string, prompt?: string, stderr?: string }} payload
- * @returns {string} The full prompt string sent to Gemini
+ * @returns {string} The full prompt string sent to AI
  */
 function buildSystemPrompt(action, { code, language, prompt, stderr }) {
   const lang = language || "plaintext";
@@ -53,20 +51,52 @@ function buildSystemPrompt(action, { code, language, prompt, stderr }) {
   }
 }
 
+
 /**
- * Core Gemini dispatcher. All AI actions route through this function.
- * Mirrors the pattern of runCodeWithJudge0() in judge0.service.js.
+ * Core AI dispatcher. All AI actions route through this function.
  *
  * @param {"explain"|"refactor"|"generate"|"debug"} action
  * @param {{ code?: string, language?: string, prompt?: string, stderr?: string }} payload
  * @returns {Promise<string>} The AI's markdown text response
  */
 export const queryGemini = async (action, payload) => {
-  const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+  dotenv.config({ override: true });
+  const fullPrompt = buildSystemPrompt(action, payload);
+  
+  const modelName = process.env.OPENROUTER_MODEL || "moonshotai/kimi-k2.7-code";
+  const apiKey = process.env.OPENROUTER_API_KEY;
+
+  if (!apiKey) {
+    throw new Error("OPENROUTER_API_KEY is not defined in environment variables");
+  }
+
+  const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "HTTP-Referer": "http://localhost:3000", // Required by OpenRouter
+      "X-Title": "CollabX", // Required by OpenRouter
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: modelName,
+      max_tokens: 1000,
+      messages: [
+        { role: "user", content: fullPrompt }
+      ]
+    })
   });
 
-  const fullPrompt = buildSystemPrompt(action, payload);
-  const result = await model.generateContent(fullPrompt);
-  return result.response.text();
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenRouter API error: ${response.status} ${response.statusText} - ${errText}`);
+  }
+
+  const data = await response.json();
+  
+  if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+    throw new Error("Invalid response format from OpenRouter");
+  }
+  
+  return data.choices[0].message.content;
 };

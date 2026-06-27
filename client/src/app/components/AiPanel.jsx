@@ -70,7 +70,7 @@ export default function AiPanel({ editorRef, language, stderr, aiState, onTrigge
           <span className="text-xs font-semibold text-violet-300 uppercase tracking-wider">
             AI Intent Mode
           </span>
-          <span className="text-[9px] text-violet-600 font-mono ml-1">via Gemini</span>
+          <span className="text-[9px] text-violet-600 font-mono ml-1">via Kimi</span>
         </div>
 
         {/* Copy + Clear — only when there's a response */}
@@ -163,7 +163,7 @@ export default function AiPanel({ editorRef, language, stderr, aiState, onTrigge
           <div className="bg-neutral-900 border border-violet-500/15 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2 h-2 rounded-full bg-violet-400" />
-              <span className="text-xs font-semibold text-violet-400">Gemini</span>
+              <span className="text-xs font-semibold text-violet-400">Kimi</span>
             </div>
             <div className="flex items-center gap-1.5 h-5">
               <span className="typing-dot" style={{ animationDelay: "0ms"   }} />
@@ -189,7 +189,7 @@ export default function AiPanel({ editorRef, language, stderr, aiState, onTrigge
           <div className="bg-neutral-900 border border-violet-500/12 rounded-xl p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-2 h-2 rounded-full bg-violet-400" />
-              <span className="text-xs font-semibold text-violet-400">Gemini</span>
+              <span className="text-xs font-semibold text-violet-400">Kimi</span>
               {activeAction && (
                 <span className="text-[9px] text-neutral-700 ml-auto capitalize">{activeAction}</span>
               )}

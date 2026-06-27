@@ -137,7 +137,7 @@ export default function Home() {
 
   useEffect(() => {
     if (user) {
-      setLoading(true);
+      setTimeout(() => setLoading(true), 0);
       fetch(`http://localhost:3000/api/workspaces/${user.id}`)
         .then(res => res.json())
         .then(data => { if (data.success) setWorkspaces(data.workspaces); })

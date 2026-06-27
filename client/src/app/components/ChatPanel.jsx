@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react"
-import { Send, MessageSquare, X } from "lucide-react"
+import { Send, MessageSquare } from "lucide-react"
 
 function formatTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })

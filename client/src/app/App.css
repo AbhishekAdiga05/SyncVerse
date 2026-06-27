@@ -358,6 +358,71 @@ body::before {
 }
 
 /* ── Reduced Motion ───────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════════════
+   WHITEBOARD (tldraw)
+   ════════════════════════════════════════════════════════════════ */
+
+.whiteboard-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  background: #09090b;
+  overflow: hidden;
+}
+
+/* Floating minimal toolbar */
+.minimal-tldraw-toolbar {
+  position: absolute;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px;
+  background: #18181b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  backdrop-filter: blur(8px);
+}
+
+.minimal-tool-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #71717a;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.minimal-tool-btn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e5e5e5;
+}
+
+.minimal-tool-btn.active {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+  box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+}
+
+/* Fix tldraw canvas background in dark mode */
+.whiteboard-container .tl-canvas {
+  background: #09090b;
+}
+
+/* Hide tldraw style panel that may bleed through */
+.whiteboard-container .tlui-style-panel {
+  display: none !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
