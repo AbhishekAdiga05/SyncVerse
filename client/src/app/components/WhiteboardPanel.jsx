@@ -1,188 +1,114 @@
-import { useCallback, useEffect, useRef, useState } from "react"
-import { Tldraw, useEditor } from "tldraw"
+import { useCallback, useEffect, useRef } from "react"
+import { Tldraw } from "tldraw"
 import "tldraw/tldraw.css"
-import { MousePointer2, Pencil, Square, Circle, Type } from "lucide-react"
 
-function MinimalToolbar() {
-  const editor = useEditor()
-  const [activeTool, setActiveTool] = useState("select")
-
-  useEffect(() => {
-    if (!editor) return
-    const id = editor.getCurrentToolId()
-    if (id) setActiveTool(id)
-  }, [editor])
-
-  const handleClick = useCallback(
-    (toolId) => {
-      editor.setCurrentTool(toolId)
-      setActiveTool(toolId)
-    },
-    [editor]
-  )
-
-  const tools = [
-    { id: "select", icon: MousePointer2, label: "Select" },
-    { id: "draw", icon: Pencil, label: "Draw" },
-    { id: "rectangle", icon: Square, label: "Rectangle" },
-    { id: "ellipse", icon: Circle, label: "Ellipse" },
-    { id: "text", icon: Type, label: "Text" },
-  ]
-
-  return (
-    <div className="minimal-tldraw-toolbar">
-      {tools.map(({ id, icon: Icon, label }) => (
-        <button
-          key={id}
-          className={`minimal-tool-btn ${activeTool === id ? "active" : ""}`}
-          onClick={() => handleClick(id)}
-          title={label}
-        >
-          <Icon className="w-4 h-4" />
-        </button>
-      ))}
-    </div>
-  )
-}
-
+/**
+ * WhiteboardPanel — collaborative whiteboard backed by Yjs.
+ *
+ * Toolbar reduced to essentials: select, draw, text, shapes (rect/ellipse),
+ * connectors (arrow/line), and eraser. Extraneous shapes and panels removed.
+ */
 export default function WhiteboardPanel({ ydoc }) {
-  const editorRef = useRef(null)
-  const yMapRef = useRef(null)
-  const applyingRemote = useRef(false)
-  const syncTimerRef = useRef(null)
-  const lastHashRef = useRef("")
+  const editorRef      = useRef(null)
+  const yMapRef        = useRef(null)
+  const syncTimerRef   = useRef(null)
+  const applyingRef    = useRef(false)   // prevents echo loop
+  const cleanupRef     = useRef(null)
 
-  function simpleHash(obj) {
-    let h = 0
-    const s = JSON.stringify(obj)
-    for (let i = 0; i < s.length; i++) {
-      h = ((h << 5) - h) + s.charCodeAt(i)
-      h = h & h
-    }
-    return String(h)
-  }
-
+  /* ─── Yjs observer: remote → editor ─────────────────── */
   useEffect(() => {
-    const yMap = ydoc.getMap("tldraw")
+    const yMap = ydoc.getMap("tldraw_v2")
     yMapRef.current = yMap
 
-    const yObserver = (_events, transaction) => {
-      if (transaction.origin === "wb") return
-      if (applyingRemote.current) return
-
+    const observer = (_events, transaction) => {
+      if (transaction.origin === "local_wb") return   // skip own writes
+      if (applyingRef.current) return
       const editor = editorRef.current
       if (!editor) return
 
-      const raw = yMap.get("raw")
-      if (!raw) return
+      const snapshot = yMap.get("snapshot")
+      if (!snapshot) return
 
-      applyingRemote.current = true
-      editor.store.mergeRemoteChanges(() => {
-        try {
-          editor.store.put(raw)
-        } catch (e) {
-          console.warn("Failed to apply remote shapes", e)
-        }
-      })
-      applyingRemote.current = false
+      applyingRef.current = true
+      try {
+        editor.store.mergeRemoteChanges(() => {
+          editor.loadSnapshot(snapshot)
+        })
+      } catch (e) {
+        console.warn("[Whiteboard] failed to apply remote snapshot", e)
+      } finally {
+        applyingRef.current = false
+      }
     }
 
-    yMap.observe(yObserver)
-
-    return () => {
-      yMap.unobserve(yObserver)
-    }
+    yMap.observe(observer)
+    return () => yMap.unobserve(observer)
   }, [ydoc])
 
+  /* ─── Local change → Yjs (debounced 300 ms) ─────────── */
   const scheduleSync = useCallback(() => {
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
     syncTimerRef.current = setTimeout(() => {
+      if (applyingRef.current) return
       const editor = editorRef.current
-      const yMap = yMapRef.current
-      if (!editor || !yMap || applyingRemote.current) return
+      const yMap   = yMapRef.current
+      if (!editor || !yMap) return
 
-      const records = editor.store.serialize("document")
-      const hash = simpleHash(records)
-      if (hash === lastHashRef.current) return
-
-      lastHashRef.current = hash
-      const raw = Object.values(records)
-      if (raw.length === 0) return
-
-      ydoc.transact(() => {
-        yMap.set("raw", raw)
-      }, "wb")
-    }, 400)
+      try {
+        const snapshot = editor.getSnapshot()
+        ydoc.transact(() => {
+          yMap.set("snapshot", snapshot)
+        }, "local_wb")
+      } catch (e) {
+        console.warn("[Whiteboard] failed to sync snapshot", e)
+      }
+    }, 300)
   }, [ydoc])
 
-  const handleMount = useCallback(
-    (editor) => {
-      editorRef.current = editor
-      editor.user.updateUserPreferences({ colorScheme: "dark" })
+  /* ─── Editor mount ───────────────────────────────────── */
+  const handleMount = useCallback((editor) => {
+    editorRef.current = editor
 
-      const yMap = yMapRef.current
-      if (!yMap) return
+    // Dark mode
+    editor.user.updateUserPreferences({ colorScheme: "dark" })
 
-      const raw = yMap.get("raw")
-      if (raw && raw.length > 0) {
-        try {
-          editor.store.put(raw)
-          lastHashRef.current = simpleHash(editor.store.serialize("document"))
-        } catch (e) {
-          console.warn("Failed to load whiteboard data", e)
-        }
+    // Remove unnecessary tools — keep only essentials for diagramming
+    const removeTools = ['diamond','triangle','hexagon','cloud','star','oval','sticky-note','frame','highlight','laser']
+    removeTools.forEach(id => { try { editor.deleteTool(id) } catch {} })
+
+    // Load any existing snapshot from Yjs
+    const yMap    = yMapRef.current
+    const snapshot = yMap?.get("snapshot")
+    if (snapshot) {
+      try { editor.loadSnapshot(snapshot) } catch (e) {
+        console.warn("[Whiteboard] failed to load initial snapshot", e)
       }
+    }
 
-      const unlisten = editor.store.listen(scheduleSync, {
-        scope: "document",
-        source: "user",
-      })
+    // Listen for local changes
+    const unlisten = editor.store.listen(scheduleSync, {
+      scope: "document",
+      source: "user",
+    })
 
-      return () => {
-        if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
-        if (typeof unlisten === "function") unlisten()
-      }
-    },
-    [scheduleSync]
-  )
+    cleanupRef.current = () => {
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current)
+      if (typeof unlisten === "function") unlisten()
+    }
+  }, [scheduleSync])
+
+  useEffect(() => {
+    return () => cleanupRef.current?.()
+  }, [])
 
   return (
-    <div className="whiteboard-container">
+    <div style={{ width: "100%", height: "100%", background: "#1c1c1e" }}>
       <Tldraw
         onMount={handleMount}
         autoFocus={false}
         components={{
-          ContextMenu: null,
-          ActionsMenu: null,
           HelpMenu: null,
-          ZoomMenu: null,
-          MainMenu: null,
-          Minimap: null,
-          StylePanel: null,
-          PageMenu: null,
           NavigationPanel: null,
-          RichTextToolbar: null,
-          ImageToolbar: null,
-          VideoToolbar: null,
-          KeyboardShortcutsDialog: null,
-          QuickActions: null,
-          HelperButtons: null,
-          DebugPanel: null,
-          DebugMenu: null,
-          MenuPanel: null,
-          SharePanel: null,
-          CursorChatBubble: null,
-          Dialogs: null,
-          Toasts: null,
-          TopPanel: null,
-          PeopleMenu: null,
-          PeopleMenuAvatar: null,
-          PeopleMenuItem: null,
-          PeopleMenuFacePile: null,
-          UserPresenceEditor: null,
-          A11y: null,
-          FollowingIndicator: null,
-          Toolbar: MinimalToolbar,
         }}
       />
     </div>

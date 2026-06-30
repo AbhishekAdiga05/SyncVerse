@@ -1,4 +1,4 @@
-import { queryGemini } from "../services/gemini.service.js";
+import { queryAi } from "../services/openrouter.service.js";
 
 const VALID_ACTIONS = ["explain", "refactor", "generate", "debug"];
 
@@ -44,14 +44,14 @@ export const handleAiRequest = async (req, res) => {
     }
 
     // ── Delegate to service ──────────────────────────────────────────────────
-    const aiResponse = await queryGemini(action, { code, language, prompt, stderr });
+    const aiResponse = await queryAi(action, { code, language, prompt, stderr });
 
     return res.status(200).json({
       success: true,
       result: aiResponse,
     });
   } catch (error) {
-    console.error(`[AI] Gemini request failed:`, error.message);
+    console.error(`[AI] OpenRouter request failed:`, error.message);
 
     return res.status(500).json({
       success: false,

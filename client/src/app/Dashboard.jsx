@@ -1,19 +1,152 @@
-import { useState, useEffect, useRef } from "react"
-import { useNavigate } from "react-router-dom"
-import { v4 as uuidV4 } from "uuid"
-import {
-  Code2, Plus, Users, ExternalLink, Pencil, Check, X,
-  Trash2, Clock, ArrowRight, Search, Edit3, Share2,
-} from "lucide-react"
-import { UserButton, useUser } from "@clerk/clerk-react"
-import { useToast } from "./components/Toast"
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Terminal, Plus, LogIn, Clock, Code2, Copy, ChevronDown, Search, Layers, AlertCircle, X, Loader2, Trash2, Link, ArrowRight } from 'lucide-react';
+import { useUser, UserButton } from "@clerk/clerk-react";
+import { v4 as uuidV4 } from "uuid";
+import { toast } from 'sonner';
+import { API_URL } from './config.js';
 
-/* ── Helpers ───────────────────────────────────────────────────── */
-const LANG_META = {
-  javascript: { label: "JavaScript", dot: "bg-yellow-400",  border: "#eab308", bg: "bg-yellow-500/10 text-yellow-400" },
-  python:     { label: "Python",     dot: "bg-blue-400",    border: "#60a5fa", bg: "bg-blue-500/10 text-blue-400"   },
-  cpp:        { label: "C++",        dot: "bg-sky-400",     border: "#38bdf8", bg: "bg-sky-500/10 text-sky-400"     },
-  java:       { label: "Java",       dot: "bg-orange-400",  border: "#fb923c", bg: "bg-orange-500/10 text-orange-400"},
+const LANG_COLORS = {
+  JavaScript: '#d29922',
+  TypeScript: '#58a6ff',
+  Python:     '#3fb950',
+  Rust:       '#f78166',
+  Go:         '#a371f7',
+  'C++':      '#38bdf8',
+  Java:       '#fb923c',
+};
+
+// Monaco language id → display label
+const MONACO_TO_LABEL = {
+  javascript: 'JavaScript',
+  typescript: 'TypeScript',
+  python:     'Python',
+  cpp:        'C++',
+  java:       'Java',
+  go:         'Go',
+  rust:       'Rust',
+};
+
+const LABEL_TO_MONACO = Object.fromEntries(
+  Object.entries(MONACO_TO_LABEL).map(([k, v]) => [v, k])
+);
+
+function CreateRoomModal({ onClose, onCreate }) {
+  const [name, setName] = useState('');
+  const [lang, setLang] = useState('JavaScript');
+  const [error, setError] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreate = async () => {
+    if (!name.trim()) { setError('Room name is required.'); return; }
+    setCreating(true);
+    try {
+      await onCreate(name.trim(), lang);
+    } catch {
+      // parent handler already toasts — just release the button
+    }
+    setCreating(false);
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-[#e6edf3]" style={{ fontWeight: 600 }}>Create New Room</h2>
+          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#8b949e] mb-1.5" style={{ fontWeight: 400 }}>Room Name</label>
+            <input
+              autoFocus
+              value={name}
+              onChange={e => { setName(e.target.value); setError(''); }}
+              placeholder="e.g. Sprint Planning, Hackathon Day 1"
+              className="w-full px-3 py-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[#e6edf3] placeholder:text-[#3d444d] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
+              onKeyDown={e => e.key === 'Enter' && handleCreate()}
+            />
+            {error && <p className="text-xs text-[#f85149] mt-1 flex items-center gap-1"><AlertCircle size={11} /> {error}</p>}
+          </div>
+
+          <div>
+            <label className="block text-sm text-[#8b949e] mb-1.5" style={{ fontWeight: 400 }}>Language</label>
+            <div className="grid grid-cols-3 gap-2">
+              {['JavaScript', 'TypeScript', 'Python', 'C++', 'Java', 'Go', 'Rust'].map(l => (
+                <button
+                  key={l}
+                  onClick={() => setLang(l)}
+                  className={`px-3 py-2 rounded-md text-xs border transition-all ${lang === l ? 'bg-[#1c2128] font-medium shadow-sm' : 'border-[#30363d] text-[#8b949e] hover:border-[#484f58] hover:text-[#e6edf3] bg-[#0d1117]'}`}
+                  style={lang === l ? { borderColor: LANG_COLORS[l] || '#58a6ff', color: LANG_COLORS[l] || '#58a6ff' } : {}}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-md border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#484f58] text-sm transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleCreate} disabled={creating} className="flex-1 py-2.5 rounded-md bg-[#238636] hover:bg-[#2ea043] text-white text-sm transition-colors flex justify-center items-center gap-2" style={{ fontWeight: 500 }}>
+              {creating ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating...</> : 'Create Room'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function JoinRoomModal({ onClose, onJoin }) {
+  const [roomId, setRoomId] = useState('');
+  const [error, setError] = useState('');
+
+  const handleJoin = async () => {
+    if (!roomId.trim()) { setError('Room ID is required.'); return; }
+    onJoin(roomId.trim());
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+      <div className="relative w-full max-w-sm bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-[#e6edf3]" style={{ fontWeight: 600 }}>Join a Room</h2>
+          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors"><X size={16} /></button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm text-[#8b949e] mb-1.5" style={{ fontWeight: 400 }}>Room ID</label>
+            <input
+              autoFocus
+              value={roomId}
+              onChange={e => { setRoomId(e.target.value); setError(''); }}
+              placeholder="e.g. 123e4567-e89b-..."
+              className="w-full px-3 py-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[#e6edf3] placeholder:text-[#3d444d] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
+              style={{ fontFamily: 'monospace' }}
+              onKeyDown={e => e.key === 'Enter' && handleJoin()}
+            />
+            {error && <p className="text-xs text-[#f85149] mt-1 flex items-center gap-1"><AlertCircle size={11} /> {error}</p>}
+          </div>
+          <p className="text-xs text-[#8b949e]">Ask the room owner to share their Room ID.</p>
+
+          <div className="flex gap-3 pt-1">
+            <button onClick={onClose} className="flex-1 py-2.5 rounded-md border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#484f58] text-sm transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleJoin} className="flex-1 py-2.5 rounded-md bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] text-sm flex items-center justify-center gap-2 transition-colors" style={{ fontWeight: 600 }}>
+              Join
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function timeAgo(dateStr) {
@@ -26,398 +159,255 @@ function timeAgo(dateStr) {
   return `${Math.floor(h / 24)}d ago`
 }
 
-/* ── WorkspaceCard ─────────────────────────────────────────────── */
-function WorkspaceCard({ ws, onOpen, onDelete, onRename }) {
-  const [editing, setEditing] = useState(false)
-  const [nameVal, setNameVal] = useState(ws.name || "Untitled Workspace")
-  const inputRef = useRef(null)
-  const lang = LANG_META[ws.language] || LANG_META.javascript
-
-  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
-
-  const commit = () => {
-    if (nameVal.trim() && nameVal !== ws.name) onRename(ws.roomId, nameVal.trim())
-    setEditing(false)
-  }
-  const cancel = () => { setNameVal(ws.name || "Untitled Workspace"); setEditing(false) }
-
-  return (
-    <div
-      className="group relative bg-neutral-900 border border-neutral-800 rounded-xl p-4
-                 hover:border-neutral-700 hover:bg-neutral-800/50 transition-all duration-200
-                 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-black/30 cursor-pointer"
-      style={{ borderLeft: `3px solid ${lang.border}40` }}
-      onClick={() => !editing && onOpen(ws.roomId)}
-    >
-      <div className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium mb-3 ${lang.bg}`}>
-        <span className={`w-1.5 h-1.5 rounded-full ${lang.dot}`} />
-        {lang.label}
-      </div>
-
-      <div className="flex items-start justify-between gap-2 mb-2">
-        {editing ? (
-          <div className="flex items-center gap-1 flex-1" onClick={e => e.stopPropagation()}>
-            <input
-              ref={inputRef}
-              value={nameVal}
-              onChange={e => setNameVal(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") cancel() }}
-              className="flex-1 bg-neutral-700 text-white text-sm font-semibold px-2 py-1
-                         rounded border border-amber-500/60 focus:outline-none"
-            />
-            <button onClick={commit} className="text-emerald-400 hover:text-emerald-300 transition p-1"><Check className="w-4 h-4" /></button>
-            <button onClick={cancel} className="text-neutral-400 hover:text-neutral-300 transition p-1"><X className="w-4 h-4" /></button>
-          </div>
-        ) : (
-          <h3 className="text-white font-semibold text-sm leading-snug flex-1 truncate">
-            {ws.name || "Untitled Workspace"}
-          </h3>
-        )}
-
-        {!editing && (
-          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-               onClick={e => e.stopPropagation()}>
-            <button
-              onClick={() => setEditing(true)}
-              className="p-1.5 rounded-md text-neutral-500 hover:text-white hover:bg-neutral-700 transition"
-              title="Rename"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              onClick={() => onDelete(ws.roomId)}
-              className="p-1.5 rounded-md text-neutral-500 hover:text-red-400 hover:bg-red-500/10 transition"
-              title="Delete"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <p className="text-[10px] text-neutral-600 font-mono truncate mb-3">{ws.roomId}</p>
-
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1 text-xs text-neutral-600">
-          <Clock className="w-3 h-3" />
-          <span>{timeAgo(ws.updatedAt)}</span>
-        </div>
-        <div className="flex items-center gap-1 text-xs text-amber-500 opacity-0 group-hover:opacity-100
-                        transition-opacity font-medium">
-          <ExternalLink className="w-3 h-3" />
-          Open
-        </div>
-      </div>
-    </div>
-  )
-}
-
-/* ── Language Options ──────────────────────────────────────────── */
-const LANG_OPTIONS = [
-  { id: "javascript", label: "JavaScript", icon: "JS", color: "border-yellow-500/40 hover:border-yellow-500 text-yellow-400" },
-  { id: "python",     label: "Python",     icon: "Py", color: "border-blue-500/40 hover:border-blue-500 text-blue-400"   },
-  { id: "cpp",        label: "C++",        icon: "C+", color: "border-sky-500/40 hover:border-sky-500 text-sky-400"     },
-  { id: "java",       label: "Java",       icon: "Jv", color: "border-orange-500/40 hover:border-orange-500 text-orange-400"},
-]
-
-/* ── Main Dashboard ────────────────────────────────────────────── */
 export default function Dashboard() {
-  const navigate = useNavigate()
-  const { user } = useUser()
-  const toast = useToast()
-
-  const [workspaces, setWorkspaces]     = useState([])
-  const [loading, setLoading]           = useState(true)
-  const [creating, setCreating]         = useState(false)
-  const [workspaceName, setWorkspaceName] = useState("")
-  const [selectedLang, setSelectedLang] = useState("javascript")
-  const [joinId, setJoinId]             = useState("")
-  const [deleteConfirm, setDeleteConfirm] = useState(null)
-  const [search, setSearch]             = useState("")
-
-  useEffect(() => { document.title = "Dashboard — CodeWeave" }, [])
+  const navigate = useNavigate();
+  const { user, isLoaded } = useUser();
+  const [workspaces, setWorkspaces] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showJoinModal, setShowJoinModal] = useState(false);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
-    if (!user) return
-    setTimeout(() => setLoading(true), 0)
-    fetch(`http://localhost:3000/api/workspaces/${user.id}`)
+    if (isLoaded && !user) navigate('/');
+  }, [user, isLoaded, navigate]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    setLoading(true);
+    fetch(`${API_URL}/api/workspaces/${user.id}`)
       .then(r => r.json())
       .then(data => { if (data.success) setWorkspaces(data.workspaces) })
-      .finally(() => setLoading(false))
-  }, [user])
+      .catch(err => {
+        console.error("Failed to load workspaces", err);
+        toast.error("Failed to load rooms");
+      })
+      .finally(() => setLoading(false));
+  }, [user?.id]);
 
-  const createRoom = async (e) => {
-    e.preventDefault()
-    setCreating(true)
-    const id = uuidV4()
+  const handleCreate = async (name, lang) => {
+    const id = uuidV4();
     try {
-      const res = await fetch("http://localhost:3000/api/workspaces", {
+      const monacoLang = LABEL_TO_MONACO[lang] || 'javascript';
+      const res = await fetch(`${API_URL}/api/workspaces`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ roomId: id, ownerId: user.id, name: workspaceName.trim() || "Untitled Workspace", language: selectedLang }),
-      })
-      const data = await res.json()
-      if (data.success) {
-        setWorkspaces(prev => [data.workspace, ...prev])
-        toast("Workspace created", "success")
+        body: JSON.stringify({ roomId: id, ownerId: user.id, name, language: monacoLang }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.message || "Failed to create room");
       }
-    } catch (err) { console.error("Create workspace failed", err) }
-    setCreating(false)
-    setWorkspaceName("")
-    navigate(`/room/${id}`)
-  }
+      setWorkspaces(prev => [data.workspace, ...prev]);
+      setShowCreateModal(false);
+      toast.success(`Room "${name}" created`);
+      navigate(`/room/${id}`);
+    } catch (err) { 
+      console.error("Create workspace failed", err);
+      toast.error(err.message || "Failed to create room");
+    }
+  };
 
-  const joinRoom = (e) => {
-    e.preventDefault()
-    if (joinId.trim()) navigate(`/room/${joinId.trim()}`)
-  }
+  const handleJoin = (id) => {
+    setShowJoinModal(false);
+    navigate(`/room/${id}`);
+  };
 
-  const handleDelete = async (roomId) => {
-    setWorkspaces(prev => prev.filter(w => w.roomId !== roomId))
-    setDeleteConfirm(null)
+  const handleCopyLink = (id, e) => {
+    e.stopPropagation();
+    const link = `${window.location.origin}/room/${id}`;
+    navigator.clipboard.writeText(link);
+    toast.success('Invite link copied');
+  };
+
+  const handleDeleteRoom = async (id, e) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this room?')) return;
     try {
-      await fetch(`http://localhost:3000/api/workspaces/${roomId}`, { method: "DELETE" })
-      toast("Workspace deleted", "info")
-    } catch (err) { console.error("Delete failed", err) }
-  }
+      const res = await fetch(`${API_URL}/api/workspaces/${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || data.message || "Failed to delete room");
+      }
+      setWorkspaces(prev => prev.filter(w => w.roomId !== id));
+      toast.success('Room deleted');
+    } catch (err) {
+      toast.error(err.message || 'Failed to delete room');
+    }
+  };
 
-  const handleRename = async (roomId, newName) => {
-    setWorkspaces(prev => prev.map(w => w.roomId === roomId ? { ...w, name: newName } : w))
-    try {
-      await fetch(`http://localhost:3000/api/workspaces/${roomId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newName }),
-      })
-    } catch (err) { console.error("Rename failed", err) }
-  }
+  const filteredRooms = workspaces.filter(r =>
+    r.name?.toLowerCase().includes(search.toLowerCase()) ||
+    r.language?.toLowerCase().includes(search.toLowerCase())
+  );
 
-  const filtered = workspaces.filter(w =>
-    !search || w.name?.toLowerCase().includes(search.toLowerCase())
-  )
-
-  const greeting = () => {
-    const h = new Date().getHours()
-    if (h < 12) return "Good morning"
-    if (h < 17) return "Good afternoon"
-    return "Good evening"
-  }
+  if (!isLoaded || !user) return null;
 
   return (
-    <main className="min-h-screen bg-[#09090b] text-white">
-
-      {/* ── Topbar ──────────────────────────────────────────────── */}
-      <nav className="sticky top-0 z-50 h-14 flex items-center px-6 gap-4
-                      bg-[#09090b]/85 backdrop-blur-md border-b border-neutral-800/40">
-        <button onClick={() => navigate("/")} className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
-          <div className="p-1.5 bg-amber-500/10 rounded-lg border border-amber-500/20">
-            <Code2 className="text-amber-400 w-4 h-4" />
+    <div className="min-h-screen bg-[#0d1117] text-[#e6edf3]">
+      {/* Top Nav */}
+      <nav className="h-12 border-b border-[#21262d] px-4 flex items-center justify-between sticky top-0 z-40 bg-[#0d1117]">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded bg-[#58a6ff] flex items-center justify-center" onClick={() => navigate('/')} style={{cursor: 'pointer'}}>
+            <Terminal size={12} className="text-[#0d1117]" />
           </div>
-          <span className="text-sm font-bold tracking-tight">CodeWeave</span>
-        </button>
-
-        <div className="hidden sm:flex items-center gap-1 ml-2">
-          <span className="text-neutral-700">/</span>
-          <span className="text-sm text-neutral-300 font-medium px-2">Dashboard</span>
+          <span className="text-sm cursor-pointer" style={{ fontFamily: 'monospace' }} onClick={() => navigate('/')}>Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#21262d] text-[#8b949e] text-xs border border-[#30363d]">
+            {workspaces.length} room{workspaces.length !== 1 ? 's' : ''}
+          </span>
         </div>
 
-        <div className="flex-1" />
-
+        {/* User menu using Clerk */}
         <div className="flex items-center gap-3">
-          <span className="text-sm text-neutral-500 hidden sm:block">
-            {greeting()}, <span className="text-white font-medium">{user?.firstName || user?.username}</span>
-          </span>
-          <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: "w-8 h-8" } }} />
+          <span className="text-sm text-[#8b949e]">{user.firstName || user.username}</span>
+          <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: "w-6 h-6 rounded-full" } }} />
         </div>
       </nav>
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 py-8">
-
-        {/* ── Main grid ──────────────────────────────────────────── */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-
-          {/* Left — Create + Join */}
-          <div className="lg:col-span-2 space-y-4">
-
-            {/* Create card */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-1">
-                <Plus className="w-4 h-4 text-amber-400" />
-                <h2 className="text-sm font-bold">New Workspace</h2>
-              </div>
-              <p className="text-neutral-600 text-xs mb-4">Start a fresh collaborative session</p>
-
-              <form onSubmit={createRoom} className="space-y-3">
-                <div className="grid grid-cols-4 gap-1.5">
-                  {LANG_OPTIONS.map(l => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      onClick={() => setSelectedLang(l.id)}
-                      className={`flex flex-col items-center py-2.5 rounded-lg border text-xs font-bold
-                                  transition-all ${l.color}
-                                  ${selectedLang === l.id
-                                    ? "bg-white/5 border-opacity-100"
-                                    : "bg-neutral-800 border-neutral-700 text-neutral-500"
-                                  }`}
-                    >
-                      <span className="text-sm font-bold">{l.icon}</span>
-                      <span className="text-[9px] mt-0.5 font-normal text-neutral-500">{l.label}</span>
-                    </button>
-                  ))}
-                </div>
-
-                <input
-                  type="text"
-                  placeholder="Workspace name (optional)"
-                  className="w-full px-3 py-2.5 bg-neutral-800 border border-neutral-700 rounded-lg
-                             text-sm text-white placeholder:text-neutral-600 focus:outline-none
-                             focus:border-amber-500 transition-colors"
-                  value={workspaceName}
-                  onChange={e => setWorkspaceName(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  disabled={creating}
-                  className="btn-primary w-full py-2.5 rounded-lg text-sm flex items-center justify-center gap-2"
-                >
-                  {creating
-                    ? <><span className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" /> Creating…</>
-                    : <><Plus className="w-4 h-4" /> Create Workspace</>
-                  }
-                </button>
-              </form>
-            </div>
-
-            {/* Join — compact */}
-            <form onSubmit={joinRoom} className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <Users className="w-4 h-4 text-neutral-400" />
-                <h2 className="text-sm font-bold">Join a Room</h2>
-              </div>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  placeholder="Room ID"
-                  className="flex-1 px-3 py-2 bg-neutral-800 border border-neutral-700 rounded-lg
-                             text-sm text-white font-mono placeholder:text-neutral-600 focus:outline-none
-                             focus:border-amber-500 transition-colors"
-                  value={joinId}
-                  onChange={e => setJoinId(e.target.value)}
-                />
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700
-                             text-white font-semibold text-sm rounded-lg transition-colors
-                             flex items-center gap-1.5 shrink-0"
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-              </div>
-            </form>
+      <div className="max-w-5xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+          <div>
+            <h1 className="text-xl text-[#e6edf3]" style={{ fontWeight: 600 }}>My Rooms</h1>
+            <p className="text-sm text-[#8b949e] mt-0.5">Your collaborative coding sessions</p>
           </div>
-
-          {/* Right — Workspace list */}
-          <div className="lg:col-span-3">
-            <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-5 h-full min-h-[480px] flex flex-col">
-              {/* Header with search */}
-              <div className="flex items-center gap-3 mb-5">
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <Code2 className="w-4 h-4 text-amber-400 shrink-0" />
-                  <h2 className="text-sm font-bold">Workspaces</h2>
-                  <span className="text-xs text-neutral-600 font-mono bg-neutral-800 px-2 py-1 rounded-md shrink-0">
-                    {workspaces.length}
-                  </span>
-                </div>
-                <div className="relative w-40 sm:w-48">
-                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-600 pointer-events-none" />
-                  <input
-                    type="text"
-                    placeholder="Filter…"
-                    value={search}
-                    onChange={e => setSearch(e.target.value)}
-                    className="w-full pl-8 pr-3 py-1.5 bg-neutral-800 border border-neutral-700 rounded-lg
-                               text-xs text-white placeholder:text-neutral-600 focus:outline-none
-                               focus:border-amber-500 transition-colors"
-                  />
-                </div>
-              </div>
-
-              {loading ? (
-                <div className="flex-1 flex flex-col gap-3">
-                  {[1,2,3].map(i => <div key={i} className="h-24 rounded-xl bg-neutral-800/50 animate-pulse" />)}
-                </div>
-              ) : filtered.length === 0 ? (
-                <div className="flex-1 flex flex-col items-center justify-center text-center py-8">
-                  {search ? (
-                    <>
-                      <div className="w-14 h-14 rounded-2xl bg-neutral-800 border border-neutral-800 flex items-center justify-center mb-4">
-                        <Search className="w-7 h-7 text-neutral-700" />
-                      </div>
-                      <p className="text-white font-semibold mb-1">No matches</p>
-                      <p className="text-neutral-600 text-sm">Try a different search term.</p>
-                    </>
-                  ) : (
-                    <>
-                      <div className="w-14 h-14 rounded-2xl bg-neutral-800 border border-neutral-800 flex items-center justify-center mb-4">
-                        <Code2 className="w-7 h-7 text-neutral-700" />
-                      </div>
-                      <p className="text-white font-semibold mb-1">No workspaces yet</p>
-                      <p className="text-neutral-600 text-sm max-w-xs mb-6">
-                        Workspaces are persistent coding sessions that save automatically. Create one to get started.
-                      </p>
-                      <div className="flex flex-col gap-2 items-center">
-                        <button
-                          onClick={() => {
-                            const nameInput = document.querySelector('input[placeholder="Workspace name (optional)"]')
-                            nameInput?.focus()
-                          }}
-                          className="flex items-center gap-2 px-5 py-2.5 bg-amber-500/10 border border-amber-500/20
-                                     text-amber-400 text-sm font-semibold rounded-lg hover:bg-amber-500/15 transition bounce"
-                        >
-                          <Plus className="w-4 h-4" /> Create your first workspace
-                        </button>
-                        <div className="flex items-center gap-2 mt-3 text-[10px] text-neutral-700">
-                          <span className="flex items-center gap-1"><Edit3 className="w-3 h-3" /> Pick a language</span>
-                          <span className="text-neutral-800">·</span>
-                          <span className="flex items-center gap-1"><Share2 className="w-3 h-3" /> Share the link</span>
-                          <span className="text-neutral-800">·</span>
-                          <span className="flex items-center gap-1"><Code2 className="w-3 h-3" /> Code together</span>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <div className="flex-1 overflow-y-auto space-y-2.5 pr-1 custom-scroll">
-                  {filtered.map(ws => {
-                    if (deleteConfirm === ws.roomId) {
-                      return (
-                        <div key={ws._id} className="bg-red-950/30 border border-red-800/40 rounded-xl p-4 flex items-center justify-between gap-3">
-                          <p className="text-sm text-red-200">Delete <span className="font-semibold">"{ws.name}"</span>?</p>
-                          <div className="flex gap-2">
-                            <button onClick={() => handleDelete(ws.roomId)} className="px-3 py-1.5 bg-red-500 text-white text-xs font-bold rounded-lg hover:bg-red-400 transition">Delete</button>
-                            <button onClick={() => setDeleteConfirm(null)} className="px-3 py-1.5 bg-neutral-700 text-white text-xs font-semibold rounded-lg hover:bg-neutral-600 transition">Cancel</button>
-                          </div>
-                        </div>
-                      )
-                    }
-                    return (
-                      <WorkspaceCard
-                        key={ws._id}
-                        ws={ws}
-                        onOpen={id => navigate(`/room/${id}`)}
-                        onDelete={id => setDeleteConfirm(id)}
-                        onRename={handleRename}
-                      />
-                    )
-                  })}
-                </div>
-              )}
-            </div>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowJoinModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#e6edf3] rounded-md text-sm transition-colors"
+            >
+              <LogIn size={14} /> Join Room
+            </button>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="flex items-center gap-2 px-3 py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-sm transition-colors"
+              style={{ fontWeight: 500 }}
+            >
+              <Plus size={14} /> Create Room
+            </button>
           </div>
         </div>
+
+        {/* Search */}
+        <div className="relative mb-5">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8b949e]" />
+          <input
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search rooms…"
+            className="w-full pl-9 pr-4 py-2 bg-[#161b22] border border-[#30363d] rounded-md text-sm text-[#e6edf3] placeholder:text-[#3d444d] focus:outline-none focus:border-[#484f58] transition-colors"
+          />
+        </div>
+
+        {/* Rooms grid */}
+        {loading ? (
+           <div className="flex flex-col items-center justify-center py-24 text-center">
+             <Loader2 className="w-8 h-8 text-[#58a6ff] animate-spin mb-4" />
+             <p className="text-[#8b949e]">Loading rooms...</p>
+           </div>
+        ) : filteredRooms.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-24 text-center">
+            {search ? (
+              <>
+                <Search size={32} className="text-[#30363d] mb-4" />
+                <p className="text-[#8b949e] mb-1">No rooms match "{search}"</p>
+                <p className="text-sm text-[#3d444d]">Try a different search term</p>
+              </>
+            ) : (
+              <>
+                <div className="w-14 h-14 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center justify-center mb-4">
+                  <Layers size={24} className="text-[#3d444d]" />
+                </div>
+                <p className="text-[#8b949e] mb-1">No rooms yet</p>
+                <p className="text-sm text-[#3d444d] mb-5">Create your first room to start collaborating.</p>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="flex items-center gap-2 px-4 py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-sm transition-colors"
+                >
+                  <Plus size={14} /> Create Room
+                </button>
+              </>
+            )}
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filteredRooms.map(room => {
+              const langColor = LANG_COLORS[MONACO_TO_LABEL[room.language] ?? room.language] ?? '#8b949e';
+              return (
+              <div
+                key={room.roomId}
+                onClick={() => navigate(`/room/${room.roomId}`)}
+                className="group p-5 bg-[#161b22] border border-[#30363d] rounded-xl transition-all cursor-pointer relative flex flex-col justify-between min-h-[160px] overflow-hidden hover:border-transparent"
+                style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+              >
+                {/* Glow effect on hover */}
+                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity duration-300 rounded-xl"
+                     style={{ border: `1px solid ${langColor}60`, background: `radial-gradient(circle at 50% 0%, ${langColor}15, transparent 70%)` }} />
+                
+                {/* Top Actions (Delete) */}
+                {room.ownerId === user.id && (
+                  <button
+                    onClick={(e) => handleDeleteRoom(room.roomId, e)}
+                    className="absolute top-3 right-3 p-1.5 rounded-md opacity-0 group-hover:opacity-100 bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149] hover:text-[#0d1117] transition-all z-10"
+                    title="Delete Room"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                )}
+
+                {/* Header row */}
+                <div className="flex items-start gap-3 mb-4 relative z-10">
+                  <div className="w-10 h-10 rounded-xl bg-[#21262d] flex items-center justify-center shrink-0 border border-[#30363d]">
+                    <Code2 size={18} style={{ color: langColor }} />
+                  </div>
+                  <div className="flex-1 min-w-0 pr-8">
+                    <p className="text-[15px] text-[#e6edf3] truncate" style={{ fontWeight: 600 }}>{room.name || 'Untitled Workspace'}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-[11px] font-medium" style={{ color: langColor }}>
+                        {MONACO_TO_LABEL[room.language] ?? room.language}
+                      </span>
+                      {room.ownerId === user.id && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-[#58a6ff]/10 text-[#58a6ff] uppercase tracking-wide border border-[#58a6ff]/20">Owner</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info row */}
+                <div className="flex items-center justify-between mb-4 relative z-10">
+                  <div className="flex items-center gap-1.5 text-xs text-[#8b949e]">
+                    <Clock size={12} />
+                    {timeAgo(room.updatedAt)}
+                  </div>
+                  <div className="flex -space-x-1">
+                    <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] border-2 border-[#161b22] bg-indigo-500 text-white font-bold shadow-sm">
+                      {user.firstName ? user.firstName[0] : 'U'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Actions */}
+                <div className="flex items-center justify-between pt-3 border-t border-[#30363d] relative z-10 mt-auto">
+                  <button
+                    onClick={e => handleCopyLink(room.roomId, e)}
+                    className="flex items-center gap-1.5 text-[11px] text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] px-2 py-1 rounded transition-colors"
+                    title="Copy Invite Link"
+                  >
+                    <Link size={11} /> Copy Link
+                  </button>
+                  
+                  <div className="text-[11px] text-[#8b949e] group-hover:text-[#58a6ff] flex items-center gap-1 font-medium transition-colors">
+                    Join Room <ArrowRight size={12} className="opacity-0 -ml-2 group-hover:opacity-100 group-hover:ml-0 transition-all duration-300" />
+                  </div>
+                </div>
+              </div>
+            )})}
+          </div>
+        )}
       </div>
-    </main>
-  )
+
+      {showCreateModal && <CreateRoomModal onClose={() => setShowCreateModal(false)} onCreate={handleCreate} />}
+      {showJoinModal && <JoinRoomModal onClose={() => setShowJoinModal(false)} onJoin={handleJoin} />}
+    </div>
+  );
 }

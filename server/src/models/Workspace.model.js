@@ -22,6 +22,10 @@ const workspaceSchema = new mongoose.Schema({
     type: String,
     default: "// Start coding collaboratively here..."
   },
+  ydocState: {
+    type: Buffer,
+    default: null,
+  },
 },
 {
     timestamps: true

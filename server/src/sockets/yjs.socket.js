@@ -1,4 +1,5 @@
 import { YSocketIO } from "y-socket.io/dist/server";
+import * as Y from "yjs";
 import Workspace from "../models/Workspace.model.js";
 
 export const initializeYjsSockets = (io) => {
@@ -15,15 +16,22 @@ export const initializeYjsSockets = (io) => {
                 workspace = await Workspace.create({ roomId });
             }
 
-            const yText = doc.getText("monaco");
+            // Restore full Yjs state (monaco + tldraw + everything else)
+            if (workspace.ydocState) {
+                try {
+                    Y.applyUpdate(doc, new Uint8Array(workspace.ydocState.buffer));
+                } catch (e) {
+                    console.error(`Failed to restore Yjs state for room ${roomId}:`, e.message);
+                    // Fall through to legacy code-only injection
+                }
+            }
 
-            // The client's Monaco editor might have injected its "defaultValue" 
-            // while we were waiting for MongoDB. We need to clear it and forcefully 
-            // apply the actual database code.
+            // If no ydocState or restoration failed, inject from legacy code field
+            const yText = doc.getText("monaco");
             const dbCode = workspace.code || "// Start coding collaboratively here...";
             if (yText.toString() !== dbCode) {
-                yText.delete(0, yText.length); // Erase any race-condition text
-                yText.insert(0, dbCode);       // Inject database text
+                yText.delete(0, yText.length);
+                yText.insert(0, dbCode);
             }
         } catch (error) {
             console.error("Error loading document:", error);
@@ -43,10 +51,11 @@ export const initializeYjsSockets = (io) => {
         // Set a new timer to save after 2 seconds of no typing (debounce)
         saveTimers[roomId] = setTimeout(async () => {
             try {
+                const fullState = Y.encodeStateAsUpdate(doc);
                 await Workspace.findOneAndUpdate(
                     { roomId },
-                    { code: yText },
-                    { upsert: true }
+                    { code: yText, ydocState: Buffer.from(fullState) },
+                    { upsert: true, timestamps: true }
                 );
                 console.log(`💾 Debounce Save: Room ${roomId} saved to database`);
             } catch (error) {
@@ -63,10 +72,11 @@ export const initializeYjsSockets = (io) => {
         if (saveTimers[roomId]) clearTimeout(saveTimers[roomId]);
 
         try {
+            const fullState = Y.encodeStateAsUpdate(doc);
             await Workspace.findOneAndUpdate(
                 { roomId },
-                { code: yText },
-                { upsert: true }
+                { code: yText, ydocState: Buffer.from(fullState) },
+                { upsert: true, timestamps: true }
             );
             console.log(`💾 Final Save: Room ${roomId} saved to database upon closing`);
         } catch (error) {

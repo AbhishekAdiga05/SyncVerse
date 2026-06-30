@@ -1,5 +1,8 @@
 FROM node:20-alpine as frontend-builder
 
+ARG VITE_API_URL=http://localhost:3000
+ENV VITE_API_URL=$VITE_API_URL
+
 COPY ./client /app
 
 WORKDIR /app
@@ -18,4 +21,4 @@ RUN npm install
 
 COPY --from=frontend-builder /app/dist /app/public
 
-CMD ["node","server.js"]
+CMD ["node","src/server.js"]

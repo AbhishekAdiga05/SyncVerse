@@ -1,738 +1,706 @@
-import { Editor } from "@monaco-editor/react"
-import { io as socketIO } from "socket.io-client"
-import { MonacoBinding } from "y-monaco"
-import { useRef, useMemo, useState, useEffect } from "react"
-import * as Y from "yjs"
-import { SocketIOProvider } from "y-socket.io"
-import { useParams, useNavigate } from "react-router-dom"
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Users, Code2, Copy, Check, Play,
-  Terminal, Loader2, Trash2, ChevronDown, Sparkles,
-  PanelLeftClose, PanelLeftOpen, Home, MessageSquare, PenTool
-} from "lucide-react"
-import { useUser } from "@clerk/clerk-react"
-import { useAi } from "./hooks/useAi.js"
-import AiPanel from "./components/AiPanel.jsx"
-import ChatPanel from "./components/ChatPanel.jsx"
-import ShortcutsPanel from "./components/ShortcutsPanel"
-import WhiteboardPanel from "./components/WhiteboardPanel.jsx"
-import { useToast } from "./components/Toast"
+  Save, LogOut, MessageSquare, Zap, Play, Loader2,
+  Users, ChevronDown, Check, WifiOff, Wifi, PenTool,
+  Copy, Terminal, HelpCircle, X,
+} from 'lucide-react';
+import { Editor } from "@monaco-editor/react";
+import { io as socketIO } from "socket.io-client";
+import { MonacoBinding } from "y-monaco";
+import * as Y from "yjs";
+import { SocketIOProvider } from "y-socket.io";
+import { useUser } from "@clerk/clerk-react";
+
+import { useAi } from "./hooks/useAi.js";
+import ChatPanel from "./components/ChatPanelNew.jsx";
+import AIReviewPanel from "./components/AIReviewPanel.jsx";
+import WhiteboardPanel from "./components/WhiteboardPanel.jsx";
+import TerminalPanel from "./components/Terminal.jsx";
+import { toast } from 'sonner';
+import { API_URL } from './config.js';
+
+/* ─── constants ─────────────────────────────────────────── */
+const LANGUAGES = [
+  { id: 63,  label: "JavaScript", monaco: "javascript" },
+  { id: 74,  label: "TypeScript", monaco: "typescript" },
+  { id: 71,  label: "Python",     monaco: "python"     },
+  { id: 54,  label: "C++",        monaco: "cpp"        },
+  { id: 62,  label: "Java",       monaco: "java"       },
+  { id: 95,  label: "Go",         monaco: "go"         },
+  { id: 73,  label: "Rust",       monaco: "rust"       },
+];
+
+const LANG_COLOR = {
+  JavaScript: '#d29922', TypeScript: '#58a6ff', Python: '#3fb950',
+  'C++': '#38bdf8', Java: '#fb923c', Go: '#a371f7', Rust: '#f78166',
+};
 
 const COLORS = [
-  "#ef4444", "#f97316", "#f59e0b", "#10b981",
-  "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#f43f5e"
-]
+  "#ef4444","#f97316","#f59e0b","#10b981",
+  "#06b6d4","#3b82f6","#8b5cf6","#d946ef","#f43f5e",
+];
 
-const LANGUAGES = [
-  { id: 63, label: "JavaScript", monaco: "javascript", icon: "JS" },
-  { id: 71, label: "Python",     monaco: "python",     icon: "Py" },
-  { id: 54, label: "C++",        monaco: "cpp",         icon: "C+" },
-  { id: 62, label: "Java",       monaco: "java",        icon: "Jv" },
-]
-
-const STATUS_STYLE = {
-  "Accepted":              "text-green-400 bg-green-500/10",
-  "Wrong Answer":          "text-red-400 bg-red-500/10",
-  "Time Limit Exceeded":   "text-orange-400 bg-orange-500/10",
-  "Runtime Error (NZEC)":  "text-red-400 bg-red-500/10",
-  "Compilation Error":     "text-yellow-400 bg-yellow-500/10",
-  "Internal Error":        "text-red-400 bg-red-500/10",
-}
+const SHORTCUTS = [
+  { keys: "Ctrl + S",        desc: "Save code"             },
+  { keys: "Ctrl + Enter",    desc: "Run code"              },
+  { keys: "Ctrl + `",        desc: "Toggle terminal"       },
+  { keys: "Ctrl + Shift + F",desc: "Format code (Monaco)"  },
+  { keys: "Ctrl + /",        desc: "Toggle comment"        },
+  { keys: "Ctrl + Z",        desc: "Undo"                  },
+  { keys: "Ctrl + Y",        desc: "Redo"                  },
+  { keys: "Ctrl + D",        desc: "Duplicate selection"   },
+  { keys: "?",               desc: "Show this panel"       },
+  { keys: "Escape",          desc: "Close panels / menus"  },
+];
 
 function getInitials(name = "") {
-  return name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) || "?"
+  return name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) || "?";
 }
 
+/* ─── component ─────────────────────────────────────────── */
 export default function Room() {
-  const { roomId } = useParams()
-  const navigate = useNavigate()
-  const { user, isLoaded } = useUser()
+  const { roomId } = useParams();
+  const navigate   = useNavigate();
+  const { user, isLoaded } = useUser();
 
-  const editorRef    = useRef(null)
-  const bindingRef   = useRef(null)
-  const providerRef  = useRef(null)
+  const editorRef   = useRef(null);
+  const bindingRef  = useRef(null);
+  const providerRef = useRef(null);
+  const langMenuRef = useRef(null);
+  const usersMenuRef = useRef(null);
+  const terminalRef = useRef(null);
 
-  const [username, setUsername]         = useState(() => sessionStorage.getItem("username") || "")
-  const [tempUsername, setTempUsername] = useState("")
-  const [users, setUsers]               = useState([])
-  const [copied, setCopied]             = useState(false)
-  const [editorReady, setEditorReady]   = useState(false)
-  const [selectedLanguage, setSelectedLanguage] = useState(LANGUAGES[0])
-  const [workspaceName, setWorkspaceName] = useState("Untitled Workspace")
+  /* ui state */
+  const [workspaceName, setWorkspaceName] = useState('Untitled Workspace');
+  const [language, setLanguage]           = useState(LANGUAGES[0]);
+  const [showLangMenu, setShowLangMenu]   = useState(false);
+  const [showUsersMenu, setShowUsersMenu] = useState(false);
+  const [codeSaved, setCodeSaved]         = useState(false);
+  const [connected, setConnected]         = useState(false);
+  const [showWhiteboard, setShowWhiteboard] = useState(false);
+  const [rightTab, setRightTab]           = useState('chat');
+  const [showOutput, setShowOutput]       = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [idCopied, setIdCopied]           = useState(false);
+  const [editingName, setEditingName]     = useState(false);
 
-  const [stdin, setStdin]               = useState("")
-  const [output, setOutput]             = useState("")
-  const [executionMeta, setExecutionMeta] = useState(null)
-  const [isRunning, setIsRunning]       = useState(false)
+  /* collab state */
+  const [users, setUsers]         = useState([]);
+  const [userColor]               = useState(() => COLORS[Math.floor(Math.random() * COLORS.length)]);
+  const [chatSocket, setChatSocket] = useState(null);
+  const [unreadCount, setUnreadCount] = useState(0);
 
-  // AI Intent Mode
-  const [showAiPanel, setShowAiPanel]   = useState(() => localStorage.getItem("codewave-ai-panel") === "true")
-  const aiHook                          = useAi()
+  /* editor / run state */
+  const ydoc  = useMemo(() => new Y.Doc(), []);
+  const yText = useMemo(() => ydoc.getText("monaco"), [ydoc]);
+  const [linesCount, setLinesCount] = useState(0);
+  const [charsCount, setCharsCount] = useState(0);
+  const [isRunning, setIsRunning]   = useState(false);
+  const [output, setOutput]         = useState("");
+  const [runCooldown, setRunCooldown] = useState(false);
+  const aiHook = useAi();
 
-  // Live Chat
-  const [showChat, setShowChat]         = useState(false)
-  const [unreadCount, setUnreadCount]   = useState(0)
-  const [chatSocket, setChatSocket]       = useState(null)
+  const username = user?.firstName || user?.username || "Guest";
 
-  // Sidebar collapse
-  const [sidebarOpen, setSidebarOpen]   = useState(() => {
-    const saved = localStorage.getItem("codewave-sidebar")
-    return saved !== null ? saved === "true" : true
-  })
+  /* ─── effects ─────────────────────────────────────────── */
+  useEffect(() => { if (isLoaded && !user) navigate('/'); }, [user, isLoaded, navigate]);
 
-  // Connection status
-  const [connected, setConnected]       = useState(false)
-
-  // Whiteboard toggle
-  const [showWhiteboard, setShowWhiteboard] = useState(false)
-
-  // Shortcuts, minimap, font size
-  const [showShortcuts, setShowShortcuts] = useState(false)
-  const [showMinimap, setShowMinimap]   = useState(() => localStorage.getItem("codewave-minimap") === "true")
-  const [fontSize]         = useState(() => Number(localStorage.getItem("codewave-fontsize")) || 14)
-  const toast                          = useToast()
-
-  // Load workspace metadata (name)
   useEffect(() => {
-    fetch(`http://localhost:3000/api/workspaces/by-room/${roomId}`)
+    fetch(`${API_URL}/api/workspaces/by-room/${roomId}`)
       .then(r => r.json())
-      .then(data => { if (data.success && data.workspace?.name) setWorkspaceName(data.workspace.name) })
-      .catch(() => {})
-  }, [roomId])
+      .then(d => {
+        if (d.success && d.workspace) {
+          if (d.workspace.name) setWorkspaceName(d.workspace.name);
+          // Bug fix: restore the language that was chosen when creating the workspace
+          if (d.workspace.language) {
+            const saved = d.workspace.language.toLowerCase();
+            const match = LANGUAGES.find(
+              l => l.monaco === saved || l.label.toLowerCase() === saved
+            );
+            if (match) setLanguage(match);
+          }
+        }
+      })
+      .catch(() => {});
+  }, [roomId]);
 
-  useEffect(() => { document.title = `${workspaceName} — CodeWeave` }, [workspaceName])
-
-  // Persist user preferences
-  useEffect(() => { localStorage.setItem("codewave-sidebar", String(sidebarOpen)) }, [sidebarOpen])
-  useEffect(() => { localStorage.setItem("codewave-ai-panel", String(showAiPanel)) }, [showAiPanel])
-  useEffect(() => { localStorage.setItem("codewave-minimap", String(showMinimap)) }, [showMinimap])
-  useEffect(() => { localStorage.setItem("codewave-fontsize", String(fontSize)) }, [fontSize])
-
-  // Auto-fill username from Clerk
   useEffect(() => {
-    if (isLoaded && user) {
-      const name = user.firstName || user.username || "Authenticated User"
-      setTimeout(() => {
-        setUsername(name)
-        sessionStorage.setItem("username", name)
-      }, 0)
-    }
-  }, [isLoaded, user])
+    if (!user) return;
+    const s = socketIO(API_URL);
+    setChatSocket(s);
+    return () => s.disconnect();
+  }, [user]);
 
-  // Keyboard shortcuts
+  useEffect(() => {
+    const update = () => {
+      const t = yText.toString();
+      setLinesCount(t.split('\n').length);
+      setCharsCount(t.length);
+    };
+    yText.observe(update);
+    update();
+    return () => yText.unobserve(update);
+  }, [yText]);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (langMenuRef.current && !langMenuRef.current.contains(e.target)) {
+        setShowLangMenu(false);
+      }
+      if (usersMenuRef.current && !usersMenuRef.current.contains(e.target)) {
+        setShowUsersMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  /* Global keyboard shortcuts */
   useEffect(() => {
     const handler = (e) => {
-      if (e.key === "?" && !e.ctrlKey && !e.metaKey) {
-        setShowShortcuts(p => !p)
-        return
+      /* ? → shortcuts modal */
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey
+          && !['INPUT','TEXTAREA'].includes(document.activeElement?.tagName)) {
+        e.preventDefault();
+        setShowShortcuts(s => !s);
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "b") {
-        e.preventDefault()
-        setSidebarOpen(p => !p)
-        return
+      /* Escape → close modals / menus */
+      if (e.key === 'Escape') {
+        setShowShortcuts(false);
+        setShowLangMenu(false);
+        setShowUsersMenu(false);
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "i") {
-        e.preventDefault()
-        setShowAiPanel(p => !p)
-        return
+      /* Ctrl+S → save */
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSaveRef.current();
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key === "m") {
-        e.preventDefault()
-        setShowMinimap(p => !p)
-        return
+      /* Ctrl+Enter → run */
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleRunCodeRef.current();
+        return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === "b") {
-        e.preventDefault()
-        setShowWhiteboard(p => !p)
-        return
+      /* Ctrl+` → toggle terminal */
+      if ((e.ctrlKey || e.metaKey) && e.key === '`') {
+        e.preventDefault();
+        setShowOutput(s => !s);
+        return;
       }
-    }
-    window.addEventListener("keydown", handler)
-    return () => window.removeEventListener("keydown", handler)
-  }, [])
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const ydoc      = useMemo(() => new Y.Doc(), [])
-  const yText     = useMemo(() => ydoc.getText("monaco"), [ydoc])
-  const [userColor] = useState(() => COLORS[Math.floor(Math.random() * COLORS.length)])
+  /* ─── editor mount ───────────────────────────────────── */
+  const handleMount = useCallback((editor) => {
+    editorRef.current = editor;
+    if (!user || !roomId) return;
 
-  // Chat socket — separate connection from Yjs provider
-  useEffect(() => {
-    if (!username) return
-    const s = socketIO("http://localhost:3000")
-    setTimeout(() => setChatSocket(s), 0)
-    return () => s.disconnect()
-  }, [username])
+    const provider = new SocketIOProvider(API_URL, roomId, ydoc, { autoConnect: true });
+    providerRef.current = provider;
 
-  // (Unread count is now reset in the toggle onClick)
+    provider.on("status", ({ status }) => setConnected(status === "connected"));
+    provider.awareness.setLocalStateField("user", { name: username, username, color: userColor });
 
-  const handleJoin = (e) => {
-    e.preventDefault()
-    if (tempUsername.trim()) {
-      sessionStorage.setItem("username", tempUsername)
-      setUsername(tempUsername)
-    }
-  }
+    const updateUsers = () => {
+      const states = Array.from(provider.awareness.getStates().values());
+      setUsers(states.filter(s => s.user?.username).map(s => s.user));
+    };
+    provider.awareness.on("change", updateUsers);
+    updateUsers();
 
-  const copyLink = () => {
-    navigator.clipboard.writeText(window.location.href)
-    setCopied(true)
-    toast("Room link copied to clipboard", "success")
-    setTimeout(() => setCopied(false), 2000)
-  }
+    bindingRef.current = new MonacoBinding(
+      yText,
+      editorRef.current.getModel(),
+      new Set([editorRef.current]),
+      provider.awareness
+    );
 
-  const handleMount = (editor) => {
-    editorRef.current = editor
-    setEditorReady(true)
-  }
+    return () => {
+      bindingRef.current?.destroy();
+      provider.disconnect();
+    };
+  }, [roomId, user, username, userColor, ydoc, yText]);
 
-  const handleLanguageChange = (e) => {
-    const next = LANGUAGES.find(l => l.id === Number(e.target.value))
-    if (next) setSelectedLanguage(next)
-  }
-
-  const handleRunCode = async () => {
-    if (!editorRef.current || isRunning) return
-
-    const sourceCode = editorRef.current.getValue()
-    setIsRunning(true)
-    setOutput("")
-    setExecutionMeta(null)
-
+  /* ─── run code ───────────────────────────────────────── */
+  const handleRunCode = async (stdinInput = "") => {
+    if (!editorRef.current || isRunning || runCooldown) return;
+    const sourceCode = editorRef.current.getValue();
+    setIsRunning(true);
+    setOutput("");
+    setShowOutput(true);
+    terminalRef.current?.pushStdin(`[${language.label}] Run program ${stdinInput ? `with stdin: ${stdinInput}` : ''}`);
     try {
-      const response = await fetch("http://localhost:3000/api/execution/run", {
+      const res  = await fetch(`${API_URL}/api/execution/run`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceCode, languageId: selectedLanguage.id, stdin }),
-      })
-
-      const data = await response.json()
-      if (!response.ok || !data.success) throw new Error(data.message || data.error || "Execution failed")
-
-      const result = data.result
-      const visibleOutput =
-        result.stdout ||
-        result.stderr ||
-        result.compileOutput ||
-        result.message ||
-        result.status?.description ||
-        "Program finished with no output."
-
-      setOutput(visibleOutput)
-      setExecutionMeta({
-        status: result.status?.description || "Finished",
-        time: result.time,
-        memory: result.memory,
-      })
-    } catch (error) {
-      setOutput(`Error: ${error.message}`)
-      setExecutionMeta({ status: "Error" })
+        body: JSON.stringify({ sourceCode, languageId: language.id, stdin: stdinInput }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || "Execution failed");
+      const r = data.result;
+      const outputText = r.stdout || r.stderr || r.compileOutput || r.message || "Program finished with no output.";
+      setOutput(outputText);
+      terminalRef.current?.pushOutput(outputText);
+      toast.success("Code execution complete");
+    } catch (err) {
+      const errMsg = `Error: ${err.message}`;
+      setOutput(errMsg);
+      terminalRef.current?.pushError(errMsg);
+      toast.error("Execution failed");
     } finally {
-      setIsRunning(false)
+      setIsRunning(false);
+      setRunCooldown(true);
+      setTimeout(() => setRunCooldown(false), 2000);
     }
-  }
+  };
 
-  useEffect(() => {
-    if (username && editorReady) {
-      const provider = new SocketIOProvider("http://localhost:3000", roomId, ydoc, { autoConnect: true })
-      providerRef.current = provider
-
-      provider.on("status", ({ status }) => {
-        setConnected(status === "connected")
-      })
-
-      provider.awareness.setLocalStateField("user", {
-        name: username,
-        username: username,
-        color: userColor,
-      })
-
-      const updateUsers = () => {
-        const states = Array.from(provider.awareness.getStates().values())
-        setUsers(states.filter(s => s.user?.username).map(s => s.user))
-      }
-
-      provider.awareness.on("change", updateUsers)
-      updateUsers()
-
-      bindingRef.current = new MonacoBinding(
-        yText,
-        editorRef.current.getModel(),
-        new Set([editorRef.current]),
-        provider.awareness
-      )
-
-      function handleBeforeUnload() {
-        provider.awareness.setLocalStateField("user", null)
-      }
-      window.addEventListener("beforeunload", handleBeforeUnload)
-
-      return () => {
-        if (bindingRef.current) bindingRef.current.destroy()
-        provider.disconnect()
-        window.removeEventListener("beforeunload", handleBeforeUnload)
-      }
+  const handleSave = useCallback(async () => {
+    try {
+      await fetch(`${API_URL}/api/workspaces/${roomId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: workspaceName }),
+      });
+      setCodeSaved(true);
+      toast.success('Code saved');
+    } catch {
+      toast.error('Save failed');
     }
-  }, [username, editorReady, roomId, ydoc, yText, userColor])
+    setTimeout(() => setCodeSaved(false), 2000);
+  }, [roomId, workspaceName]);
 
-  const handleReconnect = () => {
-    if (providerRef.current) {
-      providerRef.current.connect()
-      toast("Attempting to reconnect...", "info")
-    }
-  }
+  /* Refs so keyboard shortcuts always read latest closures */
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+  const handleRunCodeRef = useRef(handleRunCode);
+  handleRunCodeRef.current = handleRunCode;
 
-  // ── Join screen ──
-  if (!username) {
-    return (
-      <main className="h-screen w-full bg-[#09090b] flex items-center justify-center p-4 relative z-10">
-        <div className="relative w-full max-w-sm">
-          <div className="text-center mb-8">
-            <div className="inline-flex p-3 bg-amber-500/10 rounded-2xl border border-amber-500/20 mb-4">
-              <Code2 className="text-amber-400 w-8 h-8" />
-            </div>
-            <h1 className="text-2xl font-bold text-white mb-2">Join Workspace</h1>
-            <p className="text-neutral-400 text-sm">Enter your name to start collaborating</p>
-          </div>
+  const handleCopyRoomId = useCallback(() => {
+    navigator.clipboard.writeText(roomId);
+    setIdCopied(true);
+    toast.success('Room ID copied!');
+    setTimeout(() => setIdCopied(false), 2000);
+  }, [roomId]);
 
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-2xl">
-            {/* Room info badge */}
-            <div className="flex items-center gap-2 text-xs text-neutral-500 font-mono bg-neutral-800/50 px-3 py-2 rounded-lg mb-5 truncate">
-              <span className="w-2 h-2 rounded-full bg-amber-500/60 shrink-0" />
-              Room: {roomId}
-              <button
-                onClick={copyLink}
-                className="ml-auto p-1 rounded hover:bg-neutral-700 transition text-neutral-500 hover:text-neutral-300 shrink-0"
-                title="Copy room link"
-              >
-                {copied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-              </button>
-            </div>
+  if (!isLoaded || !user) return null;
 
-            <form onSubmit={handleJoin} className="flex flex-col gap-3">
-              <input
-                type="text"
-                placeholder="Your display name"
-                required
-                autoFocus
-                className="w-full px-3 py-2.5 rounded-lg bg-neutral-800 text-white border border-neutral-700 focus:outline-none focus:border-amber-500 transition-colors placeholder:text-neutral-500 text-sm"
-                value={tempUsername}
-                onChange={e => setTempUsername(e.target.value)}
-              />
-              <button
-                type="submit"
-                className="w-full py-2.5 rounded-lg bg-amber-500 text-gray-950 font-bold text-sm hover:bg-amber-400 transition-colors active:scale-[0.98]"
-              >
-                Enter Room
-              </button>
-            </form>
-
-            <div className="mt-4 pt-4 border-t border-neutral-800">
-              <p className="text-[10px] text-neutral-700 text-center">
-                Share the room link to invite collaborators
-              </p>
-            </div>
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  const statusStyle = STATUS_STYLE[executionMeta?.status] || "text-neutral-400 bg-neutral-800"
-
-  // ── Main Editor View ──
+  /* ─── render ─────────────────────────────────────────── */
   return (
-    <main className="h-screen w-full flex bg-[#09090b] text-white font-sans overflow-hidden relative">
+    <div className="h-screen flex flex-col bg-[#0d1117] text-[#e6edf3] overflow-hidden">
+      {/* ══ 1px brand accent bar ═════════════════════════════ */}
+      <div className="h-[2px] w-full shrink-0" style={{ background: 'linear-gradient(90deg, #58a6ff 0%, #a371f7 50%, #3fb950 100%)' }} />
 
-      {/* Connection banner */}
-      {username && !connected && (
-        <div className="connection-banner">
-          <span>Disconnected from collaboration server — changes won&apos;t sync</span>
-          <button onClick={handleReconnect}>Reconnect</button>
+      {/* ══ Keyboard Shortcuts Modal ═══════════════════════ */}
+      {showShortcuts && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShowShortcuts(false)}
+        >
+          <div
+            className="bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl w-[420px] max-h-[80vh] overflow-hidden"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-5 py-4 border-b border-[#21262d]">
+              <div className="flex items-center gap-2">
+                <HelpCircle size={16} className="text-[#58a6ff]" />
+                <h2 className="text-sm font-semibold">Keyboard Shortcuts</h2>
+              </div>
+              <button
+                onClick={() => setShowShortcuts(false)}
+                className="p-1.5 rounded-md hover:bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="p-5 space-y-1.5">
+              {SHORTCUTS.map(s => (
+                <div key={s.keys} className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-[#21262d] transition-colors">
+                  <span className="text-xs text-[#8b949e]">{s.desc}</span>
+                  <kbd className="px-2 py-1 bg-[#0d1117] border border-[#30363d] rounded text-[10px] font-mono text-[#e6edf3] shadow-sm">{s.keys}</kbd>
+                </div>
+              ))}
+            </div>
+            <div className="px-5 py-3 border-t border-[#21262d] text-center">
+              <span className="text-[10px] text-[#3d444d]">Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-[9px] font-mono">?</kbd> or <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-[9px] font-mono">Esc</kbd> to dismiss</span>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* ── Sidebar ── */}
-      <aside className={`bg-neutral-900 border-r border-neutral-800 flex flex-col shrink-0 transition-all duration-200
-        ${sidebarOpen ? "w-60" : "w-12"}`}>
+      {/* ══ Top Bar ════════════════════════════════════════ */}
+      <header className="h-12 border-b border-[#21262d] flex items-center px-4 gap-3 shrink-0 relative z-50" style={{ background: 'rgba(13,17,23,0.97)', backdropFilter: 'blur(8px)' }}>
 
-        {/* Toggle + Logo row */}
-        <div className="px-2 py-2.5 border-b border-neutral-800 flex items-center gap-2">
+        {/* Logo */}
+        <button onClick={() => navigate('/dashboard')} className="shrink-0 hover:opacity-75 transition-opacity flex items-center gap-2" title="Back to Dashboard">
+          <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#58a6ff] to-[#316dca] flex items-center justify-center">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0d1117" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
+            </svg>
+          </div>
+          <span className="text-sm hidden sm:block" style={{ fontFamily: 'monospace' }}>Pair<span className="text-[#58a6ff]">verse</span></span>
+        </button>
+
+        <span className="text-[#3d444d]">/</span>
+
+        {/* Workspace name (inline editable) + copy room ID */}
+        <div className="flex items-center gap-2 min-w-0">
+          {editingName ? (
+            <input
+              autoFocus
+              value={workspaceName}
+              onChange={e => setWorkspaceName(e.target.value)}
+              onBlur={() => {
+                setEditingName(false);
+                fetch(`${API_URL}/api/workspaces/${roomId}`, {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ name: workspaceName }),
+                }).catch(() => {});
+              }}
+              onKeyDown={e => {
+                if (e.key === 'Enter' || e.key === 'Escape') {
+                  e.preventDefault();
+                  setEditingName(false);
+                }
+              }}
+              className="text-sm font-semibold bg-transparent border-b border-[#58a6ff] outline-none text-[#e6edf3] min-w-0 max-w-[200px] pb-px"
+              style={{ caretColor: '#58a6ff' }}
+            />
+          ) : (
+            <button
+              onClick={() => setEditingName(true)}
+              title="Click to rename workspace"
+              className="text-sm font-semibold truncate hover:text-[#58a6ff] transition-colors text-left group flex items-center gap-1.5"
+            >
+              {workspaceName}
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                className="opacity-0 group-hover:opacity-60 transition-opacity shrink-0 text-[#8b949e]">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+          )}
           <button
-            onClick={() => setSidebarOpen(p => !p)}
-            className="icon-rail-btn shrink-0"
-            title={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            onClick={handleCopyRoomId}
+            title="Copy Room ID"
+            className="flex items-center gap-1 text-[10px] text-[#8b949e] font-mono bg-[#21262d] hover:bg-[#30363d] px-1.5 py-0.5 rounded transition-colors group shrink-0"
           >
-            {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+            {roomId.slice(0, 8)}
+            {idCopied
+              ? <Check size={10} className="text-[#3fb950]" />
+              : <Copy size={9} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+            }
           </button>
-          {sidebarOpen && (
-            <div className="flex items-center gap-1.5 flex-1 min-w-0">
-              <Code2 className="text-amber-400 w-4 h-4 shrink-0" />
-              <span className="font-bold text-sm tracking-tight truncate">{workspaceName}</span>
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Language picker */}
+        <div className="relative shrink-0" ref={langMenuRef}>
+          <button
+            onClick={() => setShowLangMenu(s => !s)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs font-medium transition-colors"
+          >
+            <span className="w-2 h-2 rounded-full" style={{ background: LANG_COLOR[language.label] ?? '#8b949e' }} />
+            {language.label}
+            <ChevronDown size={11} className="text-[#8b949e]" />
+          </button>
+          {showLangMenu && (
+            <div className="absolute right-0 top-full mt-1 w-36 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-50">
+              {LANGUAGES.map(l => (
+                <button
+                  key={l.id}
+                  onClick={() => {
+                    setLanguage(l);
+                    setShowLangMenu(false);
+                    // Persist language change to database
+                    fetch(`${API_URL}/api/workspaces/${roomId}`, {
+                      method: 'PATCH',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ language: l.monaco }),
+                    }).catch(() => {});
+                  }}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-[#21262d] transition-colors ${l.id === language.id ? 'text-[#58a6ff]' : 'text-[#e6edf3]'}`}
+                >
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: LANG_COLOR[l.label] ?? '#8b949e' }} />
+                  {l.label}
+                  {l.id === language.id && <Check size={10} className="ml-auto text-[#58a6ff]" />}
+                </button>
+              ))}
             </div>
           )}
         </div>
 
-        {/* Nav icons (always visible) */}
-        <div className="flex flex-col items-center gap-1 px-1 py-2 border-b border-neutral-800">
+        {/* Active users */}
+        <div className="relative shrink-0" ref={usersMenuRef}>
           <button
-            onClick={() => navigate("/dashboard")}
-            className="icon-rail-btn w-full"
-            title="Dashboard"
+            onClick={() => setShowUsersMenu(s => !s)}
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#21262d] transition-colors"
           >
-            <Home className="w-4 h-4" />
-            {sidebarOpen && <span className="text-xs text-neutral-500 ml-2 flex-1 text-left">Dashboard</span>}
-          </button>
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="icon-rail-btn active w-full"
-            title="Collaborators"
-          >
-            <Users className="w-4 h-4" />
-            {sidebarOpen && <span className="text-xs text-neutral-400 ml-2 flex-1 text-left">Collaborators</span>}
-          </button>
-        </div>
-
-        {/* Room ID — only when expanded */}
-        {sidebarOpen && (
-          <div className="px-4 py-2.5 border-b border-neutral-800">
-            <p className="text-[10px] text-neutral-600 mb-1 font-semibold uppercase tracking-widest">Room</p>
-            <p className="text-xs text-neutral-400 font-mono truncate">{roomId}</p>
-          </div>
-        )}
-
-        {/* Collaborators list — only when expanded */}
-        {sidebarOpen && (
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="flex items-center gap-1.5 text-neutral-600 mb-3 text-[10px] font-semibold uppercase tracking-widest">
-              <Users className="w-3 h-3" />
-              <span>Online</span>
-              <span className="ml-auto bg-neutral-800 text-neutral-500 px-1.5 py-0.5 rounded-md">{users.length}</span>
-            </div>
-            <ul className="space-y-1">
-              {users.map((u, idx) => (
-                <li key={idx} className="flex items-center gap-2.5 px-2 py-1.5 rounded-lg hover:bg-neutral-800 transition-colors">
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0"
-                    style={{ backgroundColor: u.color || "#888" }}
-                  >
-                    {getInitials(u.username)}
-                  </div>
-                  <span className="text-sm font-medium truncate flex-1">{u.username}</span>
-                  {u.username === username && (
-                    <span className="text-[10px] text-neutral-700">you</span>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {/* Spacer when collapsed */}
-        {!sidebarOpen && <div className="flex-1" />}
-
-        {/* Copy link */}
-        <div className="p-2 border-t border-neutral-800">
-          <button
-            onClick={copyLink}
-            className={`icon-rail-btn w-full ${copied ? "text-emerald-400" : ""}`}
-            title={copied ? "Copied!" : "Copy Room Link"}
-          >
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-            {sidebarOpen && (
-              <span className={`text-xs ml-2 flex-1 text-left ${copied ? "text-emerald-400" : "text-neutral-500"}`}>
-                {copied ? "Copied!" : "Copy link"}
-              </span>
-            )}
-          </button>
-        </div>
-      </aside>
-
-      {/* ── Editor Section ── */}
-      <section className="flex-1 flex flex-col min-w-0">
-
-        {/* Toolbar */}
-        <header className="h-12 bg-neutral-900 border-b border-neutral-800 flex items-center px-4 gap-3 shrink-0">
-
-          {/* Breadcrumb */}
-          <div className="flex items-center gap-1.5 text-sm min-w-0">
-            <button
-              onClick={() => navigate("/dashboard")}
-              className="text-neutral-600 hover:text-neutral-300 transition-colors flex items-center gap-1"
-            >
-              <Home className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-neutral-700">/</span>
-            <span className="text-neutral-400 text-xs font-medium truncate max-w-[140px]">{workspaceName}</span>
-          </div>
-
-          {/* Language select */}
-          <div className="relative ml-2">
-            <select
-              value={selectedLanguage.id}
-              onChange={handleLanguageChange}
-              className="h-8 pl-3 pr-8 rounded-md bg-neutral-800 border border-neutral-700 text-xs text-white font-medium focus:outline-none focus:border-amber-500 appearance-none cursor-pointer"
-            >
-              {LANGUAGES.map(l => (
-                <option key={l.id} value={l.id}>{l.label}</option>
-              ))}
-            </select>
-            <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-neutral-400 pointer-events-none" />
-          </div>
-
-          <div className="flex-1" />
-
-          {/* Live collaborator avatar strip */}
-          {users.length > 0 && (
-            <div className="flex items-center -space-x-1.5 mr-1">
+            <div className="flex -space-x-1.5">
               {users.slice(0, 4).map((u, i) => (
-                <div
-                  key={i}
-                  title={u.username}
-                  className="w-6 h-6 rounded-full border-2 border-neutral-900 flex items-center justify-center text-[9px] font-bold text-white shrink-0"
-                  style={{ backgroundColor: u.color || "#888", zIndex: 10 - i }}
-                >
+                <div key={i} className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] border-2 border-[#0d1117]"
+                  style={{ background: u.color || '#888', color: '#0d1117', fontWeight: 700, zIndex: 10 - i }}>
                   {getInitials(u.username)}
                 </div>
               ))}
-              {users.length > 4 && (
-                <div className="w-6 h-6 rounded-full border-2 border-neutral-900 bg-neutral-700 flex items-center justify-center text-[9px] font-bold text-neutral-400">
-                  +{users.length - 4}
+            </div>
+            <span className="text-xs text-[#8b949e]">{users.length}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[#3fb950]' : 'bg-[#f85149]'}`} />
+          </button>
+          {showUsersMenu && (
+            <div className="absolute right-0 top-full mt-1 w-52 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-50">
+              <div className="px-3 py-2 border-b border-[#30363d]">
+                <p className="text-[10px] text-[#8b949e] uppercase tracking-wide">Online · {users.length}</p>
+              </div>
+              {users.map((u, i) => (
+                <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#21262d]">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]" style={{ background: u.color, color: '#0d1117', fontWeight: 700 }}>
+                    {getInitials(u.username)}
+                  </div>
+                  <p className="text-xs flex-1">{u.username}</p>
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" />
                 </div>
-              )}
+              ))}
             </div>
           )}
+        </div>
 
-          {/* Minimap toggle */}
-          <button
-            onClick={() => setShowMinimap(p => !p)}
-            title="Toggle minimap"
-            className={`h-8 px-2.5 rounded-md text-[10px] font-bold transition-all duration-150 border
-              ${ showMinimap
-                ? "bg-amber-500/15 text-amber-300 border-amber-500/30"
-                : "bg-neutral-800 text-neutral-500 border-neutral-700 hover:text-neutral-300 hover:border-neutral-600"
-              }`}
-          >
-            Map
-          </button>
+        <div className="w-px h-5 bg-[#21262d]" />
 
-          {/* Whiteboard toggle */}
-          <button
-            onClick={() => setShowWhiteboard(p => !p)}
-            title="Toggle Whiteboard"
-            className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border
-              ${ showWhiteboard
-                ? "bg-sky-500/20 text-sky-300 border-sky-500/40"
-                : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-sky-500/40 hover:text-sky-300"
-              }`}
-          >
-            <PenTool className="w-3.5 h-3.5" /> Board
-          </button>
+        {/* Whiteboard toggle */}
+        <button
+          onClick={() => setShowWhiteboard(s => !s)}
+          title={showWhiteboard ? 'Back to Editor' : 'Open Whiteboard'}
+          className={`p-2 rounded-md transition-colors shrink-0 ${showWhiteboard ? 'bg-[#38bdf8]/10 text-[#38bdf8]' : 'text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3]'}`}
+        >
+          <PenTool size={15} />
+        </button>
 
-          {/* Chat toggle */}
-          <button
-            onClick={() => {
-              setShowChat(p => {
-                if (!p) setUnreadCount(0);
-                return !p;
-              });
-            }}
-            title="Toggle Room Chat"
-            id="room-chat-toggle"
-            className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border relative
-              ${ showChat
-                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-emerald-500/40 hover:text-emerald-300"
-              }`}
-          >
-            <MessageSquare className="w-3.5 h-3.5" /> Chat
-            {unreadCount > 0 && !showChat && (
-              <span className="chat-unread-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
-            )}
-          </button>
+        {/* Shortcuts */}
+        <button
+          onClick={() => setShowShortcuts(s => !s)}
+          title="Keyboard Shortcuts (?)"
+          className="p-2 rounded-md text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3] transition-colors shrink-0"
+        >
+          <HelpCircle size={15} />
+        </button>
 
-          {/* AI toggle */}
-          <button
-            onClick={() => setShowAiPanel(p => !p)}
-            title="Toggle AI Intent Mode"
-            className={`h-8 px-3 rounded-md text-xs font-bold flex items-center gap-1.5 transition-all duration-150 border
-              ${ showAiPanel
-                ? "bg-violet-500/20 text-violet-300 border-violet-500/40 btn-ai-active"
-                : "bg-neutral-800 text-neutral-300 border-neutral-700 hover:border-violet-500/40 hover:text-violet-300"
-              }`}
-          >
-            <Sparkles className="w-3.5 h-3.5" /> AI
-          </button>
+        <div className="w-px h-5 bg-[#21262d]" />
 
-          {/* Shortcuts */}
-          <button
-            onClick={() => setShowShortcuts(p => !p)}
-            title="Keyboard shortcuts"
-            className="h-8 px-2 rounded-md text-xs font-bold text-neutral-500 border border-neutral-700
-                       hover:text-neutral-300 hover:border-neutral-600 transition-all bg-neutral-800"
-          >
-            ?
-          </button>
+        {/* Save */}
+        <button
+          onClick={handleSave}
+          title="Save (Ctrl+S)"
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-[#21262d] text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
+        >
+          {codeSaved ? <Check size={13} className="text-[#3fb950]" /> : <Save size={13} />}
+          <span className={codeSaved ? 'text-[#3fb950]' : ''}>{codeSaved ? 'Saved' : 'Save'}</span>
+        </button>
 
-          {/* Run button */}
-          <button
-            onClick={handleRunCode}
-            disabled={isRunning || !editorReady}
-            className="h-8 px-4 rounded-md bg-amber-500 text-gray-950 font-bold text-xs
-                       hover:bg-amber-400 disabled:opacity-50 disabled:cursor-not-allowed
-                       transition-colors flex items-center gap-1.5 active:scale-95"
-          >
-            {isRunning
-              ? <><Loader2 className="w-3.5 h-3.5 animate-spin" /> Running…</>
-              : <><Play className="w-3.5 h-3.5" /> Run Code</>
-            }
-          </button>
-        </header>
+        {/* Leave */}
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-[#f85149]/10 text-xs text-[#8b949e] hover:text-[#f85149] transition-colors shrink-0"
+        >
+          <LogOut size={13} /> Leave
+        </button>
+      </header>
 
-        {/* Editor + I/O panel */}
-        <div className="flex-1 w-full min-h-0 flex flex-col lg:flex-row">
+      {/* ══ Body ═══════════════════════════════════════════ */}
+      <div className="flex-1 flex flex-row overflow-hidden">
 
-          {/* Monaco editor / Whiteboard */}
-          <div className="flex-1 min-h-0 min-h-[300px] lg:min-h-0">
+        {/* ── Left: Editor + Console ──────────────────────── */}
+        <div className="flex flex-col flex-1 min-w-0 overflow-hidden bg-[#0d1117]">
+
+          {/* ── File Tab bar ─────────────────────────────── */}
+          <div className="flex items-center border-b border-[#21262d] shrink-0 bg-[#0d1117] overflow-x-auto">
+            <div className="flex items-center gap-2 px-4 py-2 border-r border-[#21262d] bg-[#161b22] shrink-0">
+              <span
+                className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                style={{ background: LANG_COLOR[language.label] ?? '#8b949e', boxShadow: `0 0 6px ${LANG_COLOR[language.label] ?? '#8b949e'}60` }}
+              />
+              <span className="text-[11px] text-[#e6edf3] font-medium" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
+                {showWhiteboard ? 'whiteboard.canvas' : `main.${language.monaco === 'cpp' ? 'cpp' : language.monaco === 'java' ? 'java' : language.monaco === 'python' ? 'py' : 'js'}`}
+              </span>
+            </div>
+            <div className="flex-1" />
+            {/* Editor sub-controls */}
+            <div className="flex items-center gap-2 px-3">
+              <div className="flex items-center gap-1.5">
+                {connected
+                  ? <><span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" style={{ boxShadow: '0 0 4px #3fb950' }} /><span className="text-[10px] text-[#3fb950] font-medium tracking-wide">LIVE</span></>
+                  : <><span className="w-1.5 h-1.5 rounded-full bg-[#f85149]" /><span className="text-[10px] text-[#f85149] font-medium tracking-wide">OFFLINE</span></>
+                }
+              </div>
+              <span className="text-[10px] text-[#484f58]">|</span>
+              <span className="text-[10px] text-[#8b949e]">{linesCount} lines</span>
+              <span className="text-[10px] text-[#484f58]">·</span>
+              <span className="text-[10px] text-[#8b949e]">{charsCount} chars</span>
+              <span className="text-[10px] text-[#484f58]">|</span>
+              {/* Run button only — Review Code is in the sidebar */}
+              <button
+                onClick={handleRunCode}
+                disabled={isRunning}
+                title="Run Code (Ctrl+Enter)"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  background: isRunning ? 'rgba(63,185,80,0.1)' : 'rgba(63,185,80,0.15)',
+                  border: '1px solid rgba(63,185,80,0.4)',
+                  color: '#3fb950',
+                  boxShadow: isRunning ? 'none' : '0 0 12px rgba(63,185,80,0.2)',
+                }}
+              >
+                {isRunning ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} fill="currentColor" />}
+                {isRunning ? 'Running…' : 'Run'}
+              </button>
+            </div>
+          </div>
+
+          {/* Monaco / Whiteboard */}
+          <div className="flex-1 overflow-hidden relative">
             {showWhiteboard ? (
               <WhiteboardPanel ydoc={ydoc} />
             ) : (
               <Editor
                 height="100%"
                 width="100%"
-                language={selectedLanguage.monaco}
-                defaultValue="// Start coding collaboratively here..."
+                language={language.monaco}
                 theme="vs-dark"
                 onMount={handleMount}
                 options={{
-                  minimap: { enabled: showMinimap },
-                  padding: { top: 16 },
-                  fontSize: fontSize,
+                  minimap: { enabled: false },
+                  padding: { top: 20, bottom: 20 },
+                  fontSize: 14,
                   fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                  fontLigatures: true,
+                  lineHeight: 24,
                   scrollBeyondLastLine: false,
                 }}
               />
             )}
           </div>
 
-          {/* I/O panel + AI panel + Chat panel */}
-          <aside className="w-full lg:w-80 xl:w-96 bg-neutral-950 border-t lg:border-t-0 lg:border-l border-neutral-800 flex flex-col shrink-0">
-
-            {/* ── Stdin + Output ── */}
-            <div className={`flex flex-col min-h-0 transition-all duration-200
-              ${ (showAiPanel && showChat) ? "h-1/3"
-                : (showAiPanel || showChat) ? "h-1/2"
-                : "flex-1" }`}>
-
-              {/* Input */}
-              <div className="h-2/5 min-h-0 border-b border-neutral-800 flex flex-col">
-                <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
-                  <Terminal className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Stdin</span>
-                </div>
-                <textarea
-                  value={stdin}
-                  onChange={e => setStdin(e.target.value)}
-                  spellCheck="false"
-                  placeholder="Program input goes here…"
-                  className="flex-1 min-h-0 w-full resize-none bg-neutral-950 p-4 font-mono text-xs text-neutral-100 placeholder:text-neutral-600 focus:outline-none leading-relaxed"
-                />
-              </div>
-
-              {/* Output */}
-              <div className="flex-1 min-h-0 flex flex-col">
-                <div className="h-10 px-4 border-b border-neutral-800 flex items-center gap-2 shrink-0">
-                  <Terminal className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider">Output</span>
-
-                  <div className="flex-1" />
-
-                  {executionMeta && (
-                    <div className="flex items-center gap-2">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${statusStyle}`}>
-                        {executionMeta.status}
-                      </span>
-                      {executionMeta.time && (
-                        <span className="text-xs text-neutral-500">{executionMeta.time}s</span>
-                      )}
-                      {executionMeta.memory && (
-                        <span className="text-xs text-neutral-500">{executionMeta.memory}KB</span>
-                      )}
-                    </div>
-                  )}
-
-                  {output && (
-                    <button
-                      onClick={() => { setOutput(""); setExecutionMeta(null); }}
-                      className="p-1 rounded text-neutral-600 hover:text-neutral-400 transition"
-                      title="Clear output"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                <pre className="flex-1 min-h-0 overflow-auto whitespace-pre-wrap break-words bg-neutral-950 p-4 font-mono text-xs text-neutral-100 leading-relaxed">
-                  {isRunning
-                    ? <span className="text-amber-400 animate-pulse">● Running…</span>
-                    : output || <span className="text-neutral-600">Run code to see output here.</span>
-                  }
-                </pre>
-              </div>
-            </div>
-
-            {/* ── Chat Panel ── */}
-            {showChat && (
-              <div className="flex-1 min-h-0 border-t border-emerald-500/20">
-                <ChatPanel
-                  socket={chatSocket}
-                  roomId={roomId}
-                  username={username}
-                  userColor={userColor}
-                  onUnread={() => !showChat && setUnreadCount(c => c + 1)}
-                />
-              </div>
-            )}
-
-            {/* ── AI Panel ── */}
-            {showAiPanel && (
-              <div className="flex-1 min-h-0 border-t border-violet-500/20">
-                <AiPanel
-                  editorRef={editorRef}
-                  language={selectedLanguage.monaco}
-                  stderr={output}
-                  aiState={aiHook}
-                  onTrigger={aiHook.triggerAi}
-                  onClear={aiHook.clearAi}
-                />
-              </div>
-            )}
-          </aside>
+          {/* ── Terminal (collapsible) ──────────────────── */}
+          <div className={showOutput ? '' : 'hidden'}>
+            <TerminalPanel
+              ref={terminalRef}
+              isRunning={isRunning}
+              onExecute={handleRunCode}
+              onClose={() => setShowOutput(false)}
+            />
+          </div>
         </div>
 
-        {/* ── Status Bar ── */}
-        <div className="status-bar">
-          <span className="text-amber-400">{selectedLanguage.label}</span>
-          <span>UTF-8</span>
-          <div className="status-divider" />
-          <span className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full ${connected ? "bg-emerald-400" : "bg-red-400"} animate-pulse`} />
-            {users.length} {users.length === 1 ? "collaborator" : "collaborators"}
-            <span className="text-neutral-700 ml-0.5">· {connected ? "connected" : "connecting"}</span>
-          </span>
-          {executionMeta && (
-            <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${statusStyle}`}>
-              {executionMeta.status}
-            </span>
-          )}
-          {executionMeta?.time   && <span>{executionMeta.time}s</span>}
-          {executionMeta?.memory && <span>{executionMeta.memory} KB</span>}
+        {/* ── Divider ─────────────────────────────────────── */}
+        <div className="w-px bg-[#21262d] shrink-0" />
+
+        {/* ── Right: Sidebar ───────────────────────────────── */}
+        <div className="w-[360px] shrink-0 flex flex-col bg-[#0d1117] overflow-hidden">
+
+          {/* Tab bar — premium pill design */}
+          <div className="flex items-center gap-1 px-3 py-2 border-b border-[#21262d] shrink-0 bg-[#0d1117]">
+            <button
+              onClick={() => { setRightTab('chat'); setUnreadCount(0); }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all relative"
+              style={rightTab === 'chat' ? {
+                background: 'rgba(88,166,255,0.12)',
+                border: '1px solid rgba(88,166,255,0.3)',
+                color: '#58a6ff',
+                boxShadow: '0 0 10px rgba(88,166,255,0.1)',
+              } : {
+                background: 'transparent',
+                border: '1px solid transparent',
+                color: '#8b949e',
+              }}
+            >
+              <MessageSquare size={13} />
+              Chat
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-[#58a6ff] text-[#0d1117] text-[9px] font-bold flex items-center justify-center">{unreadCount}</span>
+              )}
+            </button>
+            <button
+              onClick={() => setRightTab('ai')}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-all"
+              style={rightTab === 'ai' ? {
+                background: 'rgba(163,113,247,0.12)',
+                border: '1px solid rgba(163,113,247,0.3)',
+                color: '#a371f7',
+                boxShadow: '0 0 10px rgba(163,113,247,0.1)',
+              } : {
+                background: 'transparent',
+                border: '1px solid transparent',
+                color: '#8b949e',
+              }}
+            >
+              <Zap size={13} />
+              AI Review
+            </button>
+          </div>
+
+          {/* Tab content */}
+          <div className="flex-1 overflow-hidden">
+            {rightTab === 'chat' ? (
+              <ChatPanel
+                socket={chatSocket}
+                roomId={roomId}
+                username={username}
+                userColor={userColor}
+                onUnread={() => setUnreadCount(c => c + 1)}
+              />
+            ) : (
+              <AIReviewPanel
+                editorRef={editorRef}
+                language={language.monaco}
+                stderr={output}
+                aiState={aiHook}
+              />
+            )}
+          </div>
         </div>
-      </section>
+      </div>
 
-      {/* Shortcuts panel */}
-      {showShortcuts && <ShortcutsPanel onClose={() => setShowShortcuts(false)} />}
+      {/* ══ Status bar ═════════════════════════════════════ */}
+      <footer className="h-6 border-t border-[#21262d] flex items-center px-4 gap-4 shrink-0" style={{ background: '#161b22' }}>
+        <div className="flex items-center gap-1.5 text-[10px]" style={{ color: LANG_COLOR[language.label] ?? '#8b949e' }}>
+          <span className="w-1.5 h-1.5 rounded-full" style={{ background: LANG_COLOR[language.label] ?? '#8b949e', boxShadow: `0 0 4px ${LANG_COLOR[language.label] ?? '#8b949e'}` }} />
+          {language.label}
+        </div>
+        <span className="text-[10px] text-[#484f58]">UTF-8</span>
+        <span className="text-[10px] text-[#484f58]">LF</span>
+        <div className="flex-1" />
+        {/* Terminal toggle in status bar */}
+        <button
+          onClick={() => setShowOutput(s => !s)}
+          className={`flex items-center gap-1 text-[10px] transition-colors px-1.5 py-0.5 rounded ${showOutput ? 'text-[#3fb950]' : 'text-[#8b949e] hover:text-[#e6edf3]'}`}
+          title="Toggle Terminal (Ctrl+`)"
+        >
+          <Terminal size={9} /> Terminal
+        </button>
+        <div className="flex items-center gap-1 text-[10px] text-[#484f58]">
+          <Users size={9} /> {users.length} online
+        </div>
+        <button
+          onClick={() => setShowShortcuts(true)}
+          className="text-[10px] text-[#484f58] hover:text-[#e6edf3] transition-colors px-1 py-0.5 rounded hover:bg-[#21262d]"
+          title="Keyboard Shortcuts"
+        >
+          ?
+        </button>
+        <span className="text-[10px] text-[#484f58]">Pairverse · MVP</span>
+      </footer>
 
-    </main>
-  )
+      {/* Overlay to close menus */}
+      {(showLangMenu || showUsersMenu) && (
+        <div className="fixed inset-0 z-40" onClick={() => { setShowLangMenu(false); setShowUsersMenu(false); }} />
+      )}
+    </div>
+  );
 }

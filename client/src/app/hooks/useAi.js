@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { API_URL } from "../config.js";
 
 /**
  * useAi — encapsulates all AI Intent Mode state and fetch logic.
@@ -35,7 +36,7 @@ export function useAi() {
     setActiveAction(action);
 
     try {
-      const res = await fetch("http://localhost:3000/api/ai", {
+      const res = await fetch(`${API_URL}/api/ai`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

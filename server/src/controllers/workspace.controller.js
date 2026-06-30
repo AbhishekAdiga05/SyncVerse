@@ -26,11 +26,12 @@ export const getWorkspaceByRoom = async (req, res) => {
 // Create a new workspace manually (so we can attach an owner)
 export const createWorkspace = async (req, res) => {
     try {
-        const { roomId, ownerId, name } = req.body;
+        const { roomId, ownerId, name, language } = req.body;
         const workspace = await Workspace.create({
             roomId,
             ownerId,
             name: name || "Untitled Workspace",
+            language: language?.toLowerCase() || "javascript",
         });
         res.status(201).json({ success: true, workspace });
     } catch (error) {
@@ -47,7 +48,7 @@ export const updateWorkspace = async (req, res) => {
         const workspace = await Workspace.findOneAndUpdate(
             { roomId },
             updates,
-            { new: true }
+            { new: true, timestamps: true }
         );
         res.status(200).json({ success: true, workspace });
     } catch (error) {
