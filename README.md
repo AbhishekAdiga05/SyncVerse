@@ -221,17 +221,7 @@ docker run -p 3000:3000 --env-file server/.env pairverse
 
 ---
 
-## For Recruiters
 
-Pairverse demonstrates competence across the full full-stack spectrum:
-
-- **Real-time systems**: CRDT-based conflict resolution with Yjs, a production-grade OT alternative. No operational transform boilerplate — Yjs handles merge semantics. The server only persists state; all conflict resolution is client-side.
-- **Distributed state management**: The Yjs document is the single source of truth. Monaco, tldraw, and the awareness protocol all read/write the same Yjs types. Persistence uses `Y.encodeStateAsUpdate` / `Y.applyUpdate` — the entire document (code + drawings) is serialized as a binary snapshot.
-- **Security architecture**: AI API keys live exclusively in `server/.env`. The frontend never touches them — all AI requests proxy through the Express server. Auth is delegated to Clerk (SOC 2 compliant identity provider).
-- **Service layer pattern**: Judge0 execution and OpenRouter AI follow identical architecture — a route → controller → service chain. Swapping providers means changing one file.
-- **Dockerized deployment**: Multi-stage Docker build compiles the frontend and copies the output into the Express static directory.
-
----
 
 ## License
 
