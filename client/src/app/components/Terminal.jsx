@@ -99,7 +99,7 @@ const Terminal = forwardRef(function Terminal({ isRunning, onExecute, onClose, o
       >
         {entries.length === 0 && (
           <div className="text-[#3d444d] mb-2">
-            <span className="text-[#58a6ff]">Welcome to PairForge Terminal</span>
+            <span className="text-[#58a6ff]">Welcome to SyncVerse Terminal</span>
             <br />
             Type a command below and press <span className="text-[#8b949e]">Enter</span> to run it as stdin.
             <br />

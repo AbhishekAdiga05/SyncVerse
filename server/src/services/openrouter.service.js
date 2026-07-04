@@ -58,7 +58,7 @@ export const queryAi = async (action, payload) => {
     headers: {
       "Authorization": `Bearer ${apiKey}`,
       "HTTP-Referer": "http://localhost:3000",
-      "X-Title": "PairForge",
+      "X-Title": "SyncVerse",
       "Content-Type": "application/json"
     },
     body: JSON.stringify({

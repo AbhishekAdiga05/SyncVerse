@@ -22,7 +22,7 @@ export default function SignUpPage() {
             <Terminal size={14} className="text-[#0d1117]" />
           </div>
           <span className="text-[#e6edf3] text-sm font-semibold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            Pair<span className="text-[#58a6ff]">verse</span>
+            Sync<span className="text-[#58a6ff]">Verse</span>
           </span>
         </button>
         <button
@@ -44,7 +44,7 @@ export default function SignUpPage() {
             <h1 className="text-[24px] sm:text-[28px] mb-1.5 text-white" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>
               Create your account
             </h1>
-            <p className="text-sm text-[#8b949e]">Join PairForge and start collaborating for free</p>
+            <p className="text-sm text-[#8b949e]">Join SyncVerse and start collaborating for free</p>
           </div>
 
           <SignUp
@@ -130,7 +130,7 @@ export default function SignUpPage() {
 
       <footer className="border-t border-[#21262d] px-6 py-4 text-center shrink-0">
         <p className="text-xs text-[#6e7681]">
-          Secured by <span className="text-[#8b949e] font-medium">Clerk</span> · PairForge
+          Secured by <span className="text-[#8b949e] font-medium">Clerk</span> · SyncVerse
         </p>
       </footer>
     </div>

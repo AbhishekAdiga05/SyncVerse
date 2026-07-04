@@ -16,7 +16,7 @@ export default function NotFound() {
             <Terminal size={14} className="text-[#0d1117]" />
           </div>
           <span className="text-sm font-semibold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-            Pair<span className="text-[#58a6ff]">verse</span>
+            Sync<span className="text-[#58a6ff]">Verse</span>
           </span>
         </button>
       </nav>
@@ -42,7 +42,7 @@ export default function NotFound() {
 
       {/* Footer */}
       <footer className="border-t border-[#21262d] px-6 py-4 text-center shrink-0">
-        <p className="text-xs text-[#6e7681]">PairForge</p>
+        <p className="text-xs text-[#6e7681]">SyncVerse</p>
       </footer>
     </div>
   )

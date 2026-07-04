@@ -371,7 +371,7 @@ export default function Room() {
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#58a6ff] to-[#316dca] flex items-center justify-center">
             <Terminal size={12} strokeWidth={3} className="text-[#0d1117]" />
           </div>
-          <span className="text-sm hidden md:block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span className="text-sm hidden md:block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Sync<span className="text-[#58a6ff]">Verse</span></span>
         </button>
 
         <span className="text-[#6e7681] hidden sm:inline">/</span>
@@ -755,7 +755,7 @@ export default function Room() {
         >
           ?
         </button>
-        <span className="text-[10px] text-[#484f58] hidden sm:inline">PairForge</span>
+        <span className="text-[10px] text-[#484f58] hidden sm:inline">SyncVerse</span>
       </footer>
 
       {/* Overlay to close menus */}

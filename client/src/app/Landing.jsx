@@ -127,9 +127,9 @@ export default function Landing() {
   const [playRef, playVisible] = useReveal(0);
 
   const PLAY_LANGS = [
-    { id: 63, label: 'JavaScript', def: '// Write JavaScript here\nconsole.log("Hello from PairForge!");' },
-    { id: 71, label: 'Python', def: '# Write Python here\nprint("Hello from PairForge!")' },
-    { id: 54, label: 'C++', def: '#include <iostream>\nint main() {\n  std::cout << "Hello from PairForge!" << std::endl;\n  return 0;\n}' },
+    { id: 63, label: 'JavaScript', def: '// Write JavaScript here\nconsole.log("Hello from SyncVerse!");' },
+    { id: 71, label: 'Python', def: '# Write Python here\nprint("Hello from SyncVerse!")' },
+    { id: 54, label: 'C++', def: '#include <iostream>\nint main() {\n  std::cout << "Hello from SyncVerse!" << std::endl;\n  return 0;\n}' },
   ];
   const [playCode, setPlayCode] = useState(PLAY_LANGS[0].def);
   const [playLang, setPlayLang] = useState(PLAY_LANGS[0]);
@@ -215,11 +215,11 @@ export default function Landing() {
           <div className="w-7 h-7 rounded-md bg-[#58a6ff] flex items-center justify-center">
             <Terminal size={14} className="text-[#0d1117]" />
           </div>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[#e6edf3] text-sm font-semibold">Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[#e6edf3] text-sm font-semibold">Sync<span className="text-[#58a6ff]">Verse</span></span>
         </div>
         <div className="hidden sm:flex items-center gap-1 mr-auto ml-8">
           <a href="#workflow" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">How it works</a>
-          <a href="#features" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">Capabilities</a>
+          <a href="#features" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">Features</a>
           <a href="#try-it" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">Try it</a>
         </div>
         <div className="flex items-center gap-2">
@@ -382,7 +382,7 @@ export default function Landing() {
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#161b22] border border-[#30363d] rounded-full text-xs text-[#8b949e] mb-4">
               <ArrowRight size={11} /> Workflow
             </div>
-            <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>How to use PairForge</h2>
+            <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>How to use SyncVerse</h2>
             <p className="text-[#8b949e] text-sm max-w-lg mx-auto" style={{ lineHeight: 1.7 }}>
               From room creation to code execution — the full collaboration flow.
             </p>
@@ -443,7 +443,7 @@ export default function Landing() {
       <section id="features" className="py-16 sm:py-20 px-4 sm:px-6" ref={featuresRef}>
         <div className="max-w-4xl mx-auto">
           <div className={`text-center mb-10 sm:mb-12 reveal ${featuresVisible ? 'visible' : ''}`} style={{ transitionDelay: '0ms' }}>
-            <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Capabilities</h2>
+            <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Features</h2>
             <p className="text-[#8b949e]">What the editor provides out of the box.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -542,7 +542,7 @@ export default function Landing() {
           <div className="w-5 h-5 rounded bg-[#58a6ff] flex items-center justify-center">
             <Terminal size={10} className="text-[#0d1117]" />
           </div>
-          <span className="text-xs text-[#8b949e]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>PairForge</span>
+          <span className="text-xs text-[#8b949e]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>SyncVerse</span>
         </div>
         <span className="text-xs text-[#6e7681] flex-wrap">React · Express · MongoDB · Socket.IO · Yjs · tldraw</span>
       </footer>

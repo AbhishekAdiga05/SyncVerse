@@ -324,7 +324,7 @@ export default function Dashboard() {
           <div className="w-6 h-6 rounded bg-[#58a6ff] flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
             <Terminal size={12} className="text-[#0d1117]" />
           </div>
-          <span className="text-sm cursor-pointer hidden sm:inline" style={{ fontFamily: "'JetBrains Mono', monospace" }} onClick={() => navigate('/')}>Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span className="text-sm cursor-pointer hidden sm:inline" style={{ fontFamily: "'JetBrains Mono', monospace" }} onClick={() => navigate('/')}>Sync<span className="text-[#58a6ff]">Verse</span></span>
           <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#21262d] text-[#8b949e] text-xs border border-[#30363d]">
             {workspaces.length} room{workspaces.length !== 1 ? 's' : ''}
           </span>
