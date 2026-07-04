@@ -1,7 +1,8 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { Users, Zap, MessageSquare, Save, ChevronRight, Shield, Terminal, PenTool, ArrowRight } from 'lucide-react';
+import { Users, Zap, MessageSquare, Save, ChevronRight, Shield, Terminal, PenTool, ArrowRight, Play, Loader2 } from 'lucide-react';
 import { SignedIn, SignedOut, useUser } from "@clerk/clerk-react";
+import { API_URL } from './config.js';
 
 function useReveal(delay = 0) {
   const ref = useRef(null);
@@ -28,14 +29,48 @@ function useReveal(delay = 0) {
   return [ref, visible];
 }
 
-const DEMO_CODE = `function fibonacci(n) {
-  if (n <= 1) return n;
-  return fibonacci(n - 1) + fibonacci(n - 2);
+/* ── Syntax-highlighted demo code ──────────────────────────── */
+function DemoCode() {
+  return (
+    <pre style={{ margin: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: '13px', lineHeight: '1.7' }}>
+      <span style={{ color: '#ff7b72' }}>function</span>{' '}
+      <span style={{ color: '#d2a8ff' }}>fibonacci</span>
+      <span style={{ color: '#e6edf3' }}>(</span>
+      <span style={{ color: '#ffa657' }}>n</span>
+      <span style={{ color: '#e6edf3' }}>)</span>
+      {' '}
+      <span style={{ color: '#e6edf3' }}>{'{'}</span>{'\n'}
+      {'  '}
+      <span style={{ color: '#ff7b72' }}>if</span>
+      {' '}
+      <span style={{ color: '#e6edf3' }}>(n {'<='} </span>
+      <span style={{ color: '#79c0ff' }}>1</span>
+      <span style={{ color: '#e6edf3' }}>) </span>
+      <span style={{ color: '#ff7b72' }}>return</span>
+      {' '}
+      <span style={{ color: '#ffa657' }}>n</span>
+      <span style={{ color: '#e6edf3' }}>;</span>{'\n'}
+      {'  '}
+      <span style={{ color: '#ff7b72' }}>return</span>
+      {' '}
+      <span style={{ color: '#d2a8ff' }}>fibonacci</span>
+      <span style={{ color: '#e6edf3' }}>(n - </span>
+      <span style={{ color: '#79c0ff' }}>1</span>
+      <span style={{ color: '#e6edf3' }}>) + </span>
+      <span style={{ color: '#d2a8ff' }}>fibonacci</span>
+      <span style={{ color: '#e6edf3' }}>(n - </span>
+      <span style={{ color: '#79c0ff' }}>2</span>
+      <span style={{ color: '#e6edf3' }}>);</span>{'\n'}
+      <span style={{ color: '#e6edf3' }}>{'}'}</span>{'\n'}
+      {'\n'}
+      <span style={{ color: '#8b949e' }}>{'// AI Review → Suggestion:'}</span>{'\n'}
+      <span style={{ color: '#8b949e' }}>{'// ⚠ No memoization — O(2^n) time'}</span>{'\n'}
+      <span style={{ color: '#8b949e' }}>{'// ✓ Use dynamic programming instead'}</span>
+    </pre>
+  );
 }
 
-// AI Review → Suggestion:
-// ⚠ No memoization — O(2^n) time
-// ✓ Use dynamic programming instead`;
+const DEMO_LINES = 8;
 
 const FEATURES = [
   {
@@ -73,6 +108,13 @@ const FEATURES = [
     color: '#d29922',
     bg: 'rgba(210,153,34,0.08)',
   },
+  {
+    icon: <Play size={20} />,
+    title: 'Code Execution',
+    desc: 'Run code server-side via Judge0 CE across 7 languages — JavaScript, Python, C++, Java, Go, Rust, and TypeScript with sandboxed execution.',
+    color: '#f78166',
+    bg: 'rgba(247,129,102,0.08)',
+  },
 ];
 
 export default function Landing() {
@@ -82,7 +124,36 @@ export default function Landing() {
   const [archRef, archVisible] = useReveal(0);
   const [stepsRef, stepsVisible] = useReveal(0);
   const [featuresRef, featuresVisible] = useReveal(0);
-  const [ctaRef, ctaVisible] = useReveal(100);
+  const [playRef, playVisible] = useReveal(0);
+
+  const PLAY_LANGS = [
+    { id: 63, label: 'JavaScript', def: '// Write JavaScript here\nconsole.log("Hello from PairForge!");' },
+    { id: 71, label: 'Python', def: '# Write Python here\nprint("Hello from PairForge!")' },
+    { id: 54, label: 'C++', def: '#include <iostream>\nint main() {\n  std::cout << "Hello from PairForge!" << std::endl;\n  return 0;\n}' },
+  ];
+  const [playCode, setPlayCode] = useState(PLAY_LANGS[0].def);
+  const [playLang, setPlayLang] = useState(PLAY_LANGS[0]);
+  const [playOutput, setPlayOutput] = useState('');
+  const [playRunning, setPlayRunning] = useState(false);
+
+  const handlePlayRun = async () => {
+    setPlayRunning(true);
+    setPlayOutput('');
+    try {
+      const res = await fetch(`${API_URL}/api/execution/run`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sourceCode: playCode, languageId: playLang.id, stdin: '' }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) throw new Error(data.message || 'Execution failed');
+      const r = data.result;
+      setPlayOutput(r.stdout || r.stderr || r.compile_output || 'No output');
+    } catch (err) {
+      setPlayOutput(`Error: ${err.message}`);
+    }
+    setPlayRunning(false);
+  };
 
   const handleGetStarted = () => {
     if (isSignedIn) {
@@ -139,25 +210,32 @@ export default function Landing() {
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3] flex flex-col">
 
       {/* Nav */}
-      <nav className="border-b border-[#21262d] px-6 py-3 flex items-center justify-between sticky top-0 z-50 bg-[#0d1117]/90 backdrop-blur-sm">
+      <nav className="border-b border-[#21262d] px-4 sm:px-6 h-14 flex items-center justify-between sticky top-0 z-50 bg-[#0d1117]/90 backdrop-blur-sm">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-md bg-[#58a6ff] flex items-center justify-center">
             <Terminal size={14} className="text-[#0d1117]" />
           </div>
-          <span style={{ fontFamily: 'monospace' }} className="text-[#e6edf3]">Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace" }} className="text-[#e6edf3] text-sm font-semibold">Pair<span className="text-[#58a6ff]">verse</span></span>
+        </div>
+        <div className="hidden sm:flex items-center gap-1 mr-auto ml-8">
+          <a href="#workflow" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">How it works</a>
+          <a href="#features" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">Capabilities</a>
+          <a href="#try-it" className="px-3 py-1.5 text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors rounded-md hover:bg-[#21262d]">Try it</a>
         </div>
         <div className="flex items-center gap-2">
           <SignedOut>
             <div className="flex items-center gap-2">
               <button
                 onClick={() => navigate('/sign-in')}
-                className="px-4 py-2 text-sm text-[#8b949e] hover:text-[#e6edf3] font-medium transition-colors"
+                aria-label="Sign in"
+                className="px-3 sm:px-4 py-2 text-sm text-[#8b949e] hover:text-[#e6edf3] font-medium transition-colors"
               >
                 Sign in
               </button>
               <button
                 onClick={() => navigate('/sign-up')}
-                className="px-4 py-2 text-sm bg-[#e6edf3] hover:bg-white text-[#0d1117] rounded-md font-semibold transition-colors shadow-sm"
+                aria-label="Get started"
+                className="px-3 sm:px-4 py-2 text-sm bg-[#e6edf3] hover:bg-white text-[#0d1117] rounded-md font-semibold transition-colors shadow-sm"
               >
                 Get started
               </button>
@@ -166,7 +244,8 @@ export default function Landing() {
           <SignedIn>
             <button
               onClick={() => navigate('/dashboard')}
-              className="px-4 py-2 text-sm bg-[#238636] hover:bg-[#2ea043] text-white rounded-md font-semibold transition-colors shadow-sm"
+              aria-label="Open Dashboard"
+              className="px-3 sm:px-4 py-2 text-sm bg-[#238636] hover:bg-[#2ea043] text-white rounded-md font-semibold transition-colors shadow-sm"
             >
               Open Dashboard →
             </button>
@@ -175,85 +254,86 @@ export default function Landing() {
       </nav>
 
       {/* Hero */}
-      <section className="flex-1 flex flex-col items-center justify-center text-center px-6 py-24 relative overflow-hidden" ref={heroRef}>
+      <section className="flex-1 flex flex-col items-center justify-center text-center px-4 sm:px-6 py-16 sm:py-24 relative overflow-hidden" ref={heroRef}>
         {/* Background glow */}
         <div
-          className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] rounded-full pointer-events-none"
+          className="absolute top-0 left-1/2 -translate-x-1/2 w-[400px] sm:w-[600px] h-[200px] sm:h-[300px] rounded-full pointer-events-none"
           style={{ background: 'radial-gradient(ellipse, rgba(88,166,255,0.08) 0%, transparent 70%)' }}
         />
 
         <div className={`inline-flex items-center gap-2 px-3 py-1 bg-[#161b22] border border-[#30363d] rounded-full text-xs text-[#8b949e] mb-6 reveal ${heroVisible ? 'visible' : ''}`} style={{ transitionDelay: '0ms' }}>
           <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] animate-pulse" />
-          React · Express · MongoDB · Socket.IO · Yjs · tldraw
+          <span className="hidden sm:inline">React · Express · MongoDB · Socket.IO · Yjs · tldraw</span>
+          <span className="sm:hidden">Full-stack collaborative editor</span>
         </div>
 
-        <h1 className={`text-5xl md:text-6xl max-w-4xl mx-auto mb-4 reveal ${heroVisible ? 'visible' : ''}`} style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 800, lineHeight: 1.1, letterSpacing: '-0.03em', transitionDelay: '100ms' }}>
+        <h1 className={`text-4xl sm:text-5xl md:text-6xl lg:text-7xl max-w-4xl mx-auto mb-4 reveal ${heroVisible ? 'visible' : ''}`} style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 800, lineHeight: 1.05, letterSpacing: '-0.04em', transitionDelay: '100ms' }}>
           Collaborative code editor
           <br />
-          <span style={{ color: '#58a6ff' }}>with real-time sync.</span>
+          <span className="bg-gradient-to-r from-[#58a6ff] to-[#a371f7] bg-clip-text text-transparent">with real-time sync.</span>
         </h1>
 
-        <p className={`text-[#8b949e] text-lg max-w-xl mx-auto mb-8 reveal ${heroVisible ? 'visible' : ''}`} style={{ lineHeight: 1.7, transitionDelay: '200ms' }}>
-          A full-stack collaborative editing platform with CRDT-based conflict resolution, AI-assisted code review, collaborative whiteboarding, multi-language execution, and persistent workspaces.
-        </p>
+          <p className={`text-[#8b949e] text-base sm:text-lg max-w-2xl mx-auto mb-8 reveal ${heroVisible ? 'visible' : ''}`} style={{ lineHeight: 1.6, transitionDelay: '200ms' }}>
+            A full-stack collaborative editing platform with CRDT-based conflict resolution, AI-assisted code review, collaborative whiteboarding, multi-language execution, and persistent workspaces.
+          </p>
 
         <div className={`flex items-center gap-3 flex-wrap justify-center mt-4 reveal ${heroVisible ? 'visible' : ''}`} style={{ transitionDelay: '300ms' }}>
           <SignedOut>
             <button
               onClick={() => navigate('/sign-up')}
-              className="flex items-center gap-2 px-6 py-3 bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] rounded-md transition-all text-sm shadow-lg hover:scale-105 active:scale-95"
+              className="flex items-center gap-2 px-5 sm:px-6 py-3 bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] rounded-md transition-all text-sm shadow-lg hover:scale-105 active:scale-95"
               style={{ fontWeight: 600 }}
             >
               Get started <ChevronRight size={16} />
             </button>
             <button
               onClick={() => navigate('/sign-in')}
-              className="flex items-center gap-2 px-6 py-3 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#e6edf3] rounded-md transition-all text-sm hover:scale-105 active:scale-95 hover:border-[#58a6ff]/30"
+              className="flex items-center gap-2 px-5 sm:px-6 py-3 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#e6edf3] rounded-md transition-all text-sm hover:scale-105 active:scale-95 hover:border-[#58a6ff]/30"
               style={{ fontWeight: 500 }}
             >
               Sign in
             </button>
           </SignedOut>
-          <SignedIn>
-            <button
-              onClick={() => navigate('/dashboard')}
-              className="flex items-center gap-2 px-8 py-3 bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] rounded-md transition-all text-sm shadow-lg hover:scale-105 active:scale-95"
-              style={{ fontWeight: 600 }}
-            >
-              Open Dashboard <ArrowRight size={16} />
-            </button>
-          </SignedIn>
+            <SignedIn>
+              <button
+                onClick={() => navigate('/dashboard')}
+                className="flex items-center gap-2 px-6 sm:px-8 py-3 bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] rounded-md transition-all text-sm shadow-lg hover:scale-105 active:scale-95"
+                style={{ fontWeight: 600 }}
+              >
+                Enter Workspace <ArrowRight size={16} />
+              </button>
+            </SignedIn>
         </div>
 
-        {/* Hero code preview */}
-        <div className={`mt-16 w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-[#30363d] text-left float-anim reveal ${heroVisible ? 'visible' : ''}`} style={{ transitionDelay: '400ms', boxShadow: '0 0 30px rgba(88,166,255,0.06), 0 8px 32px rgba(0,0,0,0.3)' }}>
+        {/* Hero code preview with syntax highlighting */}
+        <div className={`mt-12 sm:mt-16 w-full max-w-3xl mx-auto rounded-xl overflow-hidden border border-[#30363d] text-left float-anim reveal ${heroVisible ? 'visible' : ''}`} style={{ transitionDelay: '400ms', boxShadow: '0 0 30px rgba(88,166,255,0.06), 0 8px 32px rgba(0,0,0,0.3)' }}>
           {/* Window chrome */}
-          <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
+          <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-[#161b22] border-b border-[#30363d]">
             <div className="flex items-center gap-1.5">
               <span className="w-3 h-3 rounded-full bg-[#f85149]" />
               <span className="w-3 h-3 rounded-full bg-[#d29922]" />
               <span className="w-3 h-3 rounded-full bg-[#3fb950]" />
             </div>
-            <div className="flex items-center gap-2 text-xs text-[#8b949e]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" />
+            <div className="hidden sm:flex items-center gap-2 text-xs text-[#8b949e]">
+              <span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] pulse-connected" />
               3 users connected
             </div>
-            <div className="text-xs text-[#8b949e]" style={{ fontFamily: 'monospace' }}>fibonacci.js</div>
+            <div className="text-xs text-[#8b949e]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>fibonacci.js</div>
           </div>
-          <div className="flex">
+          <div className="flex overflow-x-auto">
             {/* Line numbers */}
-            <div className="py-4 px-4 bg-[#0d1117] text-[#3d444d] text-xs select-none border-r border-[#21262d]" style={{ fontFamily: 'monospace', lineHeight: '1.7' }}>
-              {DEMO_CODE.split('\n').map((_, i) => (
+            <div className="py-4 px-2 sm:px-4 bg-[#0d1117] text-[#6e7681] text-xs select-none border-r border-[#21262d] shrink-0" style={{ fontFamily: "'JetBrains Mono', monospace", lineHeight: '1.7' }}>
+              {Array.from({ length: DEMO_LINES }, (_, i) => (
                 <div key={i}>{i + 1}</div>
               ))}
             </div>
             {/* Code */}
-            <div className="py-4 px-5 bg-[#0d1117] text-sm flex-1 overflow-x-auto" style={{ fontFamily: 'monospace', lineHeight: '1.7' }}>
-              <pre className="text-[#e6edf3]">{DEMO_CODE}</pre>
+            <div className="py-4 px-3 sm:px-5 bg-[#0d1117] text-sm flex-1 overflow-x-auto">
+              <DemoCode />
             </div>
           </div>
           {/* Bottom bar */}
-          <div className="flex items-center justify-between px-4 py-2 bg-[#161b22] border-t border-[#30363d]">
+          <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-[#161b22] border-t border-[#30363d]">
             <div className="flex items-center gap-3">
               <div className="flex -space-x-1">
                 {['AJ', 'MK', 'SR'].map((initials, i) => (
@@ -263,7 +343,8 @@ export default function Landing() {
                   </div>
                 ))}
               </div>
-              <span className="text-xs text-[#8b949e]">Alex, Maria, and Sanjay are editing</span>
+              <span className="text-xs text-[#8b949e] hidden sm:inline">Alex, Maria, and Sanjay are editing</span>
+              <span className="text-xs text-[#8b949e] sm:hidden">3 editing</span>
             </div>
             <span className="text-xs px-2 py-0.5 rounded-full bg-[#a371f7]/15 text-[#a371f7]">AI Review ready</span>
           </div>
@@ -271,35 +352,37 @@ export default function Landing() {
       </section>
 
       {/* Architecture highlights */}
-      <section className="border-y border-[#21262d] py-8 px-6" ref={archRef}>
-        <div className={`max-w-3xl mx-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center text-xs text-[#8b949e]`}>
-          <div className="col-span-full text-center mb-1 reveal ${archVisible ? 'visible' : ''}">
-            <span className="text-[10px] text-[#3d444d] uppercase tracking-widest" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 600 }}>Powered by</span>
+      <section className="border-y border-[#21262d] py-8 px-4 sm:px-6" ref={archRef}>
+        <div className="max-w-3xl mx-auto">
+          <div className={`text-center mb-4 reveal ${archVisible ? 'visible' : ''}`}>
+            <span className="text-[10px] text-[#6e7681] uppercase tracking-widest" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 600 }}>Powered by</span>
           </div>
-          {[
-            ['Yjs CRDT', 'Conflict-free sync'],
-            ['Monaco Editor', 'VS Code-grade editing'],
-            ['7 Languages', 'Judge0 execution'],
-            ['tldraw', 'Collaborative canvas'],
-            ['OpenRouter', 'AI code review'],
-            ['MongoDB', 'Persistent workspaces'],
-          ].map(([label, sub], i) => (
-            <div key={label} className={`px-2 py-2 reveal ${archVisible ? 'visible' : ''}`} style={{ transitionDelay: `${i * 80}ms` }}>
-              <span className="text-[#e6edf3] font-semibold block mb-0.5 text-sm">{label}</span>
-              {sub}
-            </div>
-          ))}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-4 text-center text-xs text-[#8b949e]">
+            {[
+              ['Yjs CRDT', 'Conflict-free sync'],
+              ['Monaco Editor', 'VS Code-grade editing'],
+              ['7 Languages', 'Judge0 execution'],
+              ['tldraw', 'Collaborative canvas'],
+              ['OpenRouter', 'AI code review'],
+              ['MongoDB', 'Persistent workspaces'],
+            ].map(([label, sub], i) => (
+              <div key={label} className={`px-2 py-2 reveal ${archVisible ? 'visible' : ''}`} style={{ transitionDelay: `${i * 80}ms` }}>
+                <span className="text-[#e6edf3] font-semibold block mb-0.5 text-sm">{label}</span>
+                {sub}
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
       {/* ── HOW IT WORKS ── */}
-      <section className="py-20 px-6 border-b border-[#21262d]" ref={stepsRef}>
+      <section id="workflow" className="py-16 sm:py-20 px-4 sm:px-6 border-b border-[#21262d]" ref={stepsRef}>
         <div className="max-w-4xl mx-auto">
-          <div className={`text-center mb-12 reveal ${stepsVisible ? 'visible' : ''}`} style={{ transitionDelay: '0ms' }}>
+          <div className={`text-center mb-10 sm:mb-12 reveal ${stepsVisible ? 'visible' : ''}`} style={{ transitionDelay: '0ms' }}>
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#161b22] border border-[#30363d] rounded-full text-xs text-[#8b949e] mb-4">
               <ArrowRight size={11} /> Workflow
             </div>
-            <h2 className="text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700 }}>How to use Pairverse</h2>
+            <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>How to use PairForge</h2>
             <p className="text-[#8b949e] text-sm max-w-lg mx-auto" style={{ lineHeight: 1.7 }}>
               From room creation to code execution — the full collaboration flow.
             </p>
@@ -312,15 +395,12 @@ export default function Landing() {
                 className={`relative p-5 rounded-xl border transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg reveal ${stepsVisible ? 'visible' : ''}`}
                 style={{ background: s.bg, borderColor: s.border, transitionDelay: `${i * 100 + 100}ms`, boxShadow: `0 4px 12px rgba(0,0,0,0.1)` }}
               >
-                {/* Step number */}
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-[#0d1117]/60 border border-[#30363d]"
-                    style={{ fontFamily: 'monospace', color: s.color }}>
+                {/* Step number circle */}
+                <div className="flex items-center mb-3">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold border-2 bg-[#0d1117] relative z-10"
+                    style={{ borderColor: s.color, color: s.color }}>
                     {s.step}
-                  </span>
-                  {i < STEPS.length - 1 && (
-                    <ArrowRight size={12} className="text-[#3d444d]" />
-                  )}
+                  </div>
                 </div>
                 <h3 className="text-[#e6edf3] mb-2" style={{ fontSize: '14px', fontWeight: 600 }}>{s.title}</h3>
                 <p className="text-[#8b949e] text-xs" style={{ lineHeight: 1.65 }}>{s.desc}</p>
@@ -360,15 +440,15 @@ export default function Landing() {
       </section>
 
       {/* Features */}
-      <section id="features" className="py-20 px-6" ref={featuresRef}>
+      <section id="features" className="py-16 sm:py-20 px-4 sm:px-6" ref={featuresRef}>
         <div className="max-w-4xl mx-auto">
-          <div className={`text-center mb-12 reveal ${featuresVisible ? 'visible' : ''}`} style={{ transitionDelay: '0ms' }}>
-            <h2 className="text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700 }}>Capabilities</h2>
+          <div className={`text-center mb-10 sm:mb-12 reveal ${featuresVisible ? 'visible' : ''}`} style={{ transitionDelay: '0ms' }}>
+            <h2 className="text-2xl sm:text-3xl mb-3" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>Capabilities</h2>
             <p className="text-[#8b949e]">What the editor provides out of the box.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {FEATURES.map((f, i) => (
-              <div key={f.title} className={`p-5 rounded-xl border border-[#30363d] bg-[#161b22] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#58a6ff]/20 hover:shadow-lg reveal ${featuresVisible ? 'visible' : ''}`}
+              <div key={f.title} className={`group p-5 rounded-xl border border-[#30363d] bg-[#161b22] transition-all duration-300 hover:-translate-y-1 hover:border-[#58a6ff]/20 hover:shadow-xl reveal ${featuresVisible ? 'visible' : ''}`}
                 style={{ transitionDelay: `${i * 100 + 100}ms` }}>
                 <div className="w-9 h-9 rounded-lg flex items-center justify-center mb-3 transition-transform duration-300 group-hover:scale-110" style={{ background: f.bg, color: f.color }}>
                   {f.icon}
@@ -381,51 +461,90 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* Bottom CTA */}
-      <section className="px-6 pb-20" ref={ctaRef}>
-        <div className={`max-w-2xl mx-auto p-8 rounded-xl border border-[#30363d] bg-[#161b22] text-center reveal ${ctaVisible ? 'visible' : ''}`} style={{ boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}>
-          <Terminal size={28} className="text-[#58a6ff] mx-auto mb-4" />
-          <h2 className="text-2xl mb-2" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700 }}>Start collaborating</h2>
-          <p className="text-[#8b949e] mb-6 text-sm">Create a room, share the ID, and begin editing in real-time.</p>
-          <div className="flex items-center justify-center gap-3 mt-4">
-            <SignedOut>
+      {/* Try It Now */}
+      <section id="try-it" className="py-16 sm:py-20 px-4 sm:px-6 border-t border-[#21262d]" ref={playRef}>
+        <div className="max-w-4xl mx-auto">
+          <div className={`text-center mb-8 reveal ${playVisible ? 'visible' : ''}`}>
+            <div className="inline-flex items-center gap-2 px-3 py-1 bg-[#161b22] border border-[#30363d] rounded-full text-xs text-[#8b949e] mb-4">
+              <Play size={11} /> Try It Now
+            </div>
+            <h2 className="text-2xl sm:text-3xl mb-2" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>No login required</h2>
+            <p className="text-[#8b949e] text-sm">Write and run code directly in your browser.</p>
+          </div>
+
+          <div className={`rounded-xl border border-[#30363d] overflow-hidden reveal ${playVisible ? 'visible' : ''}`} style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            {/* Toolbar */}
+            <div className="flex items-center justify-between px-4 py-2.5 bg-[#161b22] border-b border-[#30363d]">
+              <div className="flex items-center gap-2">
+                {PLAY_LANGS.map(l => (
+                  <button
+                    key={l.id}
+                    onClick={() => { setPlayLang(l); setPlayCode(l.def); setPlayOutput(''); }}
+                    className={`px-3 py-1.5 rounded-md text-xs transition-all ${
+                      playLang.id === l.id
+                        ? 'bg-[#58a6ff]/15 text-[#58a6ff] border border-[#58a6ff]/30'
+                        : 'text-[#8b949e] hover:text-[#e6edf3] border border-transparent'
+                    }`}
+                    style={{ fontWeight: playLang.id === l.id ? 600 : 400 }}
+                  >
+                    {l.label}
+                  </button>
+                ))}
+              </div>
               <button
-                onClick={() => navigate('/sign-up')}
-                className="px-6 py-2.5 bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] rounded-md transition-all text-sm shadow-sm hover:scale-105 active:scale-95"
-                style={{ fontWeight: 600 }}
+                onClick={handlePlayRun}
+                disabled={playRunning}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-md text-xs font-semibold transition-all disabled:opacity-50"
+                style={{
+                  background: playRunning ? 'rgba(63,185,80,0.1)' : 'rgba(63,185,80,0.15)',
+                  border: '1px solid rgba(63,185,80,0.4)',
+                  color: '#3fb950',
+                }}
               >
-                Get started
+                {playRunning ? <Loader2 size={12} className="animate-spin" /> : <Play size={11} fill="currentColor" />}
+                {playRunning ? 'Running...' : 'Run'}
               </button>
-              <button
-                onClick={() => navigate('/sign-in')}
-                className="px-6 py-2.5 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#e6edf3] rounded-md transition-all text-sm hover:scale-105 active:scale-95 hover:border-[#58a6ff]/30"
-                style={{ fontWeight: 500 }}
-              >
-                Sign in
-              </button>
-            </SignedOut>
-            <SignedIn>
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="px-6 py-2.5 bg-[#58a6ff] hover:bg-[#4793e5] text-[#0d1117] rounded-md transition-all text-sm shadow-sm hover:scale-105 active:scale-95"
-                style={{ fontWeight: 600 }}
-              >
-                Open Dashboard →
-              </button>
-            </SignedIn>
+            </div>
+
+            {/* Editor + Output */}
+            <div className="flex flex-col sm:flex-row">
+              <div className="flex-1 min-w-0 border-b sm:border-b-0 sm:border-r border-[#21262d]">
+                <textarea
+                  value={playCode}
+                  onChange={e => setPlayCode(e.target.value)}
+                  className="w-full bg-[#0d1117] text-[#e6edf3] p-4 outline-none resize-none"
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: '13px',
+                    lineHeight: 1.7,
+                    minHeight: '220px',
+                    caretColor: '#58a6ff',
+                  }}
+                  spellCheck={false}
+                />
+              </div>
+              <div className="w-full sm:w-64 lg:w-80 bg-[#0d1117] p-4">
+                <div className="text-[10px] text-[#6e7681] uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                  <Terminal size={10} /> Output
+                </div>
+                <pre className="text-sm text-[#e6edf3] whitespace-pre-wrap" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: '12px', lineHeight: 1.6, minHeight: '180px' }}>
+                  {playOutput || <span className="text-[#484f58]">Click "Run" to execute code</span>}
+                </pre>
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-[#21262d] px-6 py-5 flex items-center justify-between">
+      <footer className="border-t border-[#21262d] px-4 sm:px-6 py-5 flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <div className="w-5 h-5 rounded bg-[#58a6ff] flex items-center justify-center">
             <Terminal size={10} className="text-[#0d1117]" />
           </div>
-          <span className="text-xs text-[#8b949e]" style={{ fontFamily: 'monospace' }}>Pairverse</span>
+          <span className="text-xs text-[#8b949e]" style={{ fontFamily: "'JetBrains Mono', monospace" }}>PairForge</span>
         </div>
-        <span className="text-xs text-[#3d444d]">React · Express · MongoDB · Socket.IO · Yjs · tldraw</span>
+        <span className="text-xs text-[#6e7681] flex-wrap">React · Express · MongoDB · Socket.IO · Yjs · tldraw</span>
       </footer>
     </div>
   );

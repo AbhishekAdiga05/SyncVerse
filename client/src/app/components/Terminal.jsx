@@ -66,7 +66,7 @@ const Terminal = forwardRef(function Terminal({ isRunning, onExecute, onClose, o
   };
 
   return (
-    <div className="border-t border-[#21262d] bg-[#0d1117] shrink-0 flex flex-col" style={{ height: '220px' }}>
+    <div className="border-t border-[#21262d] bg-[#0d1117] shrink-0 flex flex-col" style={{ height: '240px' }}>
       <div className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-b border-[#21262d] shrink-0">
         <div className="flex items-center gap-2">
           <TerminalIcon size={13} className="text-[#8b949e]" />
@@ -99,7 +99,7 @@ const Terminal = forwardRef(function Terminal({ isRunning, onExecute, onClose, o
       >
         {entries.length === 0 && (
           <div className="text-[#3d444d] mb-2">
-            <span className="text-[#58a6ff]">Welcome to Pairverse Terminal</span>
+            <span className="text-[#58a6ff]">Welcome to PairForge Terminal</span>
             <br />
             Type a command below and press <span className="text-[#8b949e]">Enter</span> to run it as stdin.
             <br />

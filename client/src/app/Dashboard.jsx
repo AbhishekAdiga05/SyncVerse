@@ -31,6 +31,59 @@ const LABEL_TO_MONACO = Object.fromEntries(
   Object.entries(MONACO_TO_LABEL).map(([k, v]) => [v, k])
 );
 
+/* ── Delete confirmation modal ─────────────────────────────── */
+function DeleteRoomModal({ roomName, onConfirm, onClose }) {
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await onConfirm();
+    } catch {
+      // error handled by parent
+    }
+    setDeleting(false);
+  };
+
+  return (
+    <div className="delete-modal-overlay" onClick={onClose}>
+      <div className="delete-modal-backdrop" />
+      <div className="delete-modal" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-[#f85149]/10 border border-[#f85149]/20 flex items-center justify-center shrink-0">
+            <Trash2 size={18} className="text-[#f85149]" />
+          </div>
+          <div>
+            <h2 className="text-[#e6edf3] text-sm" style={{ fontWeight: 600 }}>Delete Room</h2>
+            <p className="text-xs text-[#8b949e] mt-0.5">This action cannot be undone.</p>
+          </div>
+        </div>
+
+        <p className="text-sm text-[#8b949e] mb-5" style={{ lineHeight: 1.6 }}>
+          Are you sure you want to delete <strong className="text-[#e6edf3]">{roomName}</strong>? All collaborators will lose access immediately.
+        </p>
+
+        <div className="flex gap-3">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-md border border-[#30363d] text-[#8b949e] hover:text-[#e6edf3] hover:border-[#484f58] text-sm transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="flex-1 py-2.5 rounded-md bg-[#f85149] hover:bg-[#da3633] text-white text-sm transition-colors flex justify-center items-center gap-2"
+            style={{ fontWeight: 500 }}
+          >
+            {deleting ? <><Loader2 className="w-4 h-4 animate-spin" /> Deleting...</> : 'Delete Room'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CreateRoomModal({ onClose, onCreate }) {
   const [name, setName] = useState('');
   const [lang, setLang] = useState('JavaScript');
@@ -54,7 +107,7 @@ function CreateRoomModal({ onClose, onCreate }) {
       <div className="relative w-full max-w-md bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-[#e6edf3]" style={{ fontWeight: 600 }}>Create New Room</h2>
-          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors"><X size={16} /></button>
+          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors" aria-label="Close"><X size={16} /></button>
         </div>
 
         <div className="space-y-4">
@@ -65,7 +118,7 @@ function CreateRoomModal({ onClose, onCreate }) {
               value={name}
               onChange={e => { setName(e.target.value); setError(''); }}
               placeholder="e.g. Sprint Planning, Hackathon Day 1"
-              className="w-full px-3 py-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[#e6edf3] placeholder:text-[#3d444d] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
+              className="w-full px-3 py-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[#e6edf3] placeholder:text-[#6e7681] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
               onKeyDown={e => e.key === 'Enter' && handleCreate()}
             />
             {error && <p className="text-xs text-[#f85149] mt-1 flex items-center gap-1"><AlertCircle size={11} /> {error}</p>}
@@ -73,7 +126,7 @@ function CreateRoomModal({ onClose, onCreate }) {
 
           <div>
             <label className="block text-sm text-[#8b949e] mb-1.5" style={{ fontWeight: 400 }}>Language</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
               {['JavaScript', 'TypeScript', 'Python', 'C++', 'Java', 'Go', 'Rust'].map(l => (
                 <button
                   key={l}
@@ -116,7 +169,7 @@ function JoinRoomModal({ onClose, onJoin }) {
       <div className="relative w-full max-w-sm bg-[#161b22] border border-[#30363d] rounded-xl p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-[#e6edf3]" style={{ fontWeight: 600 }}>Join a Room</h2>
-          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors"><X size={16} /></button>
+          <button onClick={onClose} className="text-[#8b949e] hover:text-[#e6edf3] transition-colors" aria-label="Close"><X size={16} /></button>
         </div>
 
         <div className="space-y-4">
@@ -127,8 +180,8 @@ function JoinRoomModal({ onClose, onJoin }) {
               value={roomId}
               onChange={e => { setRoomId(e.target.value); setError(''); }}
               placeholder="e.g. 123e4567-e89b-..."
-              className="w-full px-3 py-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[#e6edf3] placeholder:text-[#3d444d] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
-              style={{ fontFamily: 'monospace' }}
+              className="w-full px-3 py-2.5 rounded-md bg-[#0d1117] border border-[#30363d] text-[#e6edf3] placeholder:text-[#6e7681] text-sm focus:outline-none focus:border-[#58a6ff] transition-colors"
+              style={{ fontFamily: "'JetBrains Mono', monospace" }}
               onKeyDown={e => e.key === 'Enter' && handleJoin()}
             />
             {error && <p className="text-xs text-[#f85149] mt-1 flex items-center gap-1"><AlertCircle size={11} /> {error}</p>}
@@ -144,6 +197,26 @@ function JoinRoomModal({ onClose, onJoin }) {
             </button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ── Skeleton card for loading state ───────────────────────── */
+function SkeletonCard() {
+  return (
+    <div className="p-5 bg-[#161b22] border border-[#30363d] rounded-xl min-h-[160px] flex flex-col gap-4">
+      <div className="flex items-start gap-3">
+        <div className="w-10 h-10 rounded-xl skeleton" />
+        <div className="flex-1 space-y-2 pt-1">
+          <div className="h-4 w-3/4 skeleton" />
+          <div className="h-3 w-1/2 skeleton" />
+        </div>
+      </div>
+      <div className="flex-1" />
+      <div className="h-3 w-1/3 skeleton" />
+      <div className="pt-3 border-t border-[#30363d]">
+        <div className="h-3 w-1/4 skeleton" />
       </div>
     </div>
   );
@@ -167,6 +240,7 @@ export default function Dashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [search, setSearch] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState(null); // { roomId, name }
 
   useEffect(() => {
     if (isLoaded && !user) navigate('/');
@@ -220,9 +294,7 @@ export default function Dashboard() {
     toast.success('Invite link copied');
   };
 
-  const handleDeleteRoom = async (id, e) => {
-    e.stopPropagation();
-    if (!confirm('Are you sure you want to delete this room?')) return;
+  const handleDeleteRoom = async (id) => {
     try {
       const res = await fetch(`${API_URL}/api/workspaces/${id}`, { method: 'DELETE' });
       const data = await res.json();
@@ -230,6 +302,7 @@ export default function Dashboard() {
         throw new Error(data.error || data.message || "Failed to delete room");
       }
       setWorkspaces(prev => prev.filter(w => w.roomId !== id));
+      setDeleteTarget(null);
       toast.success('Room deleted');
     } catch (err) {
       toast.error(err.message || 'Failed to delete room');
@@ -246,27 +319,27 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-[#0d1117] text-[#e6edf3]">
       {/* Top Nav */}
-      <nav className="h-12 border-b border-[#21262d] px-4 flex items-center justify-between sticky top-0 z-40 bg-[#0d1117]">
+      <nav className="h-14 border-b border-[#21262d] px-4 sm:px-6 flex items-center justify-between sticky top-0 z-40 bg-[#0d1117]/95 backdrop-blur-sm">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-[#58a6ff] flex items-center justify-center" onClick={() => navigate('/')} style={{cursor: 'pointer'}}>
+          <div className="w-6 h-6 rounded bg-[#58a6ff] flex items-center justify-center cursor-pointer hover:opacity-80 transition-opacity" onClick={() => navigate('/')}>
             <Terminal size={12} className="text-[#0d1117]" />
           </div>
-          <span className="text-sm cursor-pointer" style={{ fontFamily: 'monospace' }} onClick={() => navigate('/')}>Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span className="text-sm cursor-pointer hidden sm:inline" style={{ fontFamily: "'JetBrains Mono', monospace" }} onClick={() => navigate('/')}>Pair<span className="text-[#58a6ff]">verse</span></span>
           <span className="ml-2 px-1.5 py-0.5 rounded-full bg-[#21262d] text-[#8b949e] text-xs border border-[#30363d]">
             {workspaces.length} room{workspaces.length !== 1 ? 's' : ''}
           </span>
         </div>
 
-        {/* User menu using Clerk */}
+        {/* User menu */}
         <div className="flex items-center gap-3">
-          <span className="text-sm text-[#8b949e]">{user.firstName || user.username}</span>
+          <span className="text-sm text-[#8b949e] hidden sm:inline">{user.firstName || user.username}</span>
           <UserButton afterSignOutUrl="/" appearance={{ elements: { avatarBox: "w-6 h-6 rounded-full" } }} />
         </div>
       </nav>
 
-      <div className="max-w-5xl mx-auto px-6 py-8">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6 sm:mb-8">
           <div>
             <h1 className="text-xl text-[#e6edf3]" style={{ fontWeight: 600 }}>My Rooms</h1>
             <p className="text-sm text-[#8b949e] mt-0.5">Your collaborative coding sessions</p>
@@ -276,14 +349,14 @@ export default function Dashboard() {
               onClick={() => setShowJoinModal(true)}
               className="flex items-center gap-2 px-3 py-2 bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-[#e6edf3] rounded-md text-sm transition-colors"
             >
-              <LogIn size={14} /> Join Room
+              <LogIn size={14} /> <span className="hidden sm:inline">Join</span> Room
             </button>
             <button
               onClick={() => setShowCreateModal(true)}
               className="flex items-center gap-2 px-3 py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-sm transition-colors"
               style={{ fontWeight: 500 }}
             >
-              <Plus size={14} /> Create Room
+              <Plus size={14} /> <span className="hidden sm:inline">Create</span> Room
             </button>
           </div>
         </div>
@@ -295,31 +368,30 @@ export default function Dashboard() {
             value={search}
             onChange={e => setSearch(e.target.value)}
             placeholder="Search rooms…"
-            className="w-full pl-9 pr-4 py-2 bg-[#161b22] border border-[#30363d] rounded-md text-sm text-[#e6edf3] placeholder:text-[#3d444d] focus:outline-none focus:border-[#484f58] transition-colors"
+            className="w-full pl-9 pr-4 py-2.5 bg-[#161b22] border border-[#30363d] rounded-md text-sm text-[#e6edf3] placeholder:text-[#6e7681] focus:outline-none focus:border-[#484f58] transition-colors"
           />
         </div>
 
         {/* Rooms grid */}
         {loading ? (
-           <div className="flex flex-col items-center justify-center py-24 text-center">
-             <Loader2 className="w-8 h-8 text-[#58a6ff] animate-spin mb-4" />
-             <p className="text-[#8b949e]">Loading rooms...</p>
+           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+             {[1, 2, 3, 4, 5, 6].map(i => <SkeletonCard key={i} />)}
            </div>
         ) : filteredRooms.length === 0 ? (
-          <div className="flex flex-col items-center justify-center py-24 text-center">
+          <div className="flex flex-col items-center justify-center py-20 sm:py-24 text-center">
             {search ? (
               <>
                 <Search size={32} className="text-[#30363d] mb-4" />
                 <p className="text-[#8b949e] mb-1">No rooms match "{search}"</p>
-                <p className="text-sm text-[#3d444d]">Try a different search term</p>
+                <p className="text-sm text-[#6e7681]">Try a different search term</p>
               </>
             ) : (
               <>
                 <div className="w-14 h-14 rounded-xl bg-[#161b22] border border-[#30363d] flex items-center justify-center mb-4">
-                  <Layers size={24} className="text-[#3d444d]" />
+                  <Layers size={24} className="text-[#6e7681]" />
                 </div>
                 <p className="text-[#8b949e] mb-1">No rooms yet</p>
-                <p className="text-sm text-[#3d444d] mb-5">Create your first room to start collaborating.</p>
+                <p className="text-sm text-[#6e7681] mb-5">Create your first room to start collaborating.</p>
                 <button
                   onClick={() => setShowCreateModal(true)}
                   className="flex items-center gap-2 px-4 py-2 bg-[#238636] hover:bg-[#2ea043] text-white rounded-md text-sm transition-colors"
@@ -337,7 +409,7 @@ export default function Dashboard() {
               <div
                 key={room.roomId}
                 onClick={() => navigate(`/room/${room.roomId}`)}
-                className="group p-5 bg-[#161b22] border border-[#30363d] rounded-xl transition-all cursor-pointer relative flex flex-col justify-between min-h-[160px] overflow-hidden hover:border-transparent"
+                className="group p-5 bg-[#161b22] border border-[#30363d] rounded-xl transition-all duration-300 cursor-pointer relative flex flex-col justify-between min-h-[160px] overflow-hidden hover:border-transparent hover:-translate-y-0.5"
                 style={{ boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
               >
                 {/* Glow effect on hover */}
@@ -347,9 +419,13 @@ export default function Dashboard() {
                 {/* Top Actions (Delete) */}
                 {room.ownerId === user.id && (
                   <button
-                    onClick={(e) => handleDeleteRoom(room.roomId, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setDeleteTarget({ roomId: room.roomId, name: room.name || 'Untitled Workspace' });
+                    }}
                     className="absolute top-3 right-3 p-1.5 rounded-md opacity-0 group-hover:opacity-100 bg-[#f85149]/10 text-[#f85149] hover:bg-[#f85149] hover:text-[#0d1117] transition-all z-10"
                     title="Delete Room"
+                    aria-label="Delete room"
                   >
                     <Trash2 size={13} />
                   </button>
@@ -392,6 +468,7 @@ export default function Dashboard() {
                     onClick={e => handleCopyLink(room.roomId, e)}
                     className="flex items-center gap-1.5 text-[11px] text-[#8b949e] hover:text-[#e6edf3] bg-[#21262d] hover:bg-[#30363d] px-2 py-1 rounded transition-colors"
                     title="Copy Invite Link"
+                    aria-label="Copy invite link"
                   >
                     <Link size={11} /> Copy Link
                   </button>
@@ -408,6 +485,13 @@ export default function Dashboard() {
 
       {showCreateModal && <CreateRoomModal onClose={() => setShowCreateModal(false)} onCreate={handleCreate} />}
       {showJoinModal && <JoinRoomModal onClose={() => setShowJoinModal(false)} onJoin={handleJoin} />}
+      {deleteTarget && (
+        <DeleteRoomModal
+          roomName={deleteTarget.name}
+          onConfirm={() => handleDeleteRoom(deleteTarget.roomId)}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
     </div>
   );
 }

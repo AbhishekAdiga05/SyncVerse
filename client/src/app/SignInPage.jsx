@@ -13,7 +13,7 @@ export default function SignInPage() {
 
   return (
     <div className="min-h-screen bg-[#0d1117] flex flex-col">
-      <nav className="border-b border-[#21262d] px-6 py-3 flex items-center justify-between shrink-0">
+      <nav className="border-b border-[#21262d] px-4 sm:px-6 h-14 flex items-center justify-between shrink-0 sticky top-0 z-50 bg-[#0d1117]/90 backdrop-blur-sm">
         <button
           onClick={() => navigate("/")}
           className="flex items-center gap-2 hover:opacity-80 transition-opacity"
@@ -21,7 +21,7 @@ export default function SignInPage() {
           <div className="w-7 h-7 rounded-md bg-[#58a6ff] flex items-center justify-center">
             <Terminal size={14} className="text-[#0d1117]" />
           </div>
-          <span className="text-[#e6edf3] text-sm font-semibold" style={{ fontFamily: "monospace" }}>
+          <span className="text-[#e6edf3] text-sm font-semibold" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
             Pair<span className="text-[#58a6ff]">verse</span>
           </span>
         </button>
@@ -34,14 +34,14 @@ export default function SignInPage() {
         </button>
       </nav>
 
-      <div className="flex-1 flex items-center justify-center px-4 py-12 relative overflow-hidden">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] pointer-events-none"
+      <div className="flex-1 flex items-center justify-center px-4 py-8 sm:py-12 relative overflow-hidden">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] sm:w-[800px] h-[300px] sm:h-[400px] pointer-events-none"
           style={{ background: "radial-gradient(ellipse, rgba(88,166,255,0.06) 0%, transparent 70%)" }}
         />
 
         <div className="w-full max-w-[420px]">
-          <div className="text-center mb-8">
-            <h1 className="text-[28px] mb-1.5 text-white" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>
+          <div className="text-center mb-6 sm:mb-8">
+            <h1 className="text-[24px] sm:text-[28px] mb-1.5 text-white" style={{ fontFamily: "'Plus Jakarta Sans', 'Inter', sans-serif", fontWeight: 700, letterSpacing: '-0.02em' }}>
               Welcome back
             </h1>
             <p className="text-sm text-[#8b949e]">Sign in to continue to your workspace</p>
@@ -51,7 +51,7 @@ export default function SignInPage() {
             path="/sign-in"
             routing="path"
             signUpUrl="/sign-up"
-            afterSignInUrl="/dashboard"
+            fallbackRedirectUrl="/dashboard"
             appearance={{
               variables: {
                 colorBackground: "#161b22",
@@ -70,7 +70,7 @@ export default function SignInPage() {
                   border: "1px solid #21262d",
                   boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
                   borderRadius: "12px",
-                  padding: "1.5rem 2rem 2rem",
+                  padding: "1.5rem 1.5rem 2rem",
                   color: "#e6edf3",
                 },
                 headerTitle: { display: "none" },
@@ -116,11 +116,12 @@ export default function SignInPage() {
           />
 
           <div className="mt-6 pt-5 border-t border-[#21262d]">
-            <div className="flex items-center gap-4 justify-center">
+            <div className="flex items-center gap-3 sm:gap-4 justify-center flex-wrap">
               {FEATURES.map((f, i) => (
                 <div key={i} className="flex items-center gap-1.5 text-[11px] text-[#8b949e]">
                   <span className="text-[#58a6ff]">{f.icon}</span>
-                  {f.text}
+                  <span className="hidden sm:inline">{f.text}</span>
+                  <span className="sm:hidden">{f.text.split(' ').slice(0, 3).join(' ')}</span>
                 </div>
               ))}
             </div>
@@ -129,8 +130,8 @@ export default function SignInPage() {
       </div>
 
       <footer className="border-t border-[#21262d] px-6 py-4 text-center shrink-0">
-        <p className="text-xs text-[#3d444d]">
-          Secured by <span className="text-[#8b949e] font-medium">Clerk</span> · Pairverse MVP
+        <p className="text-xs text-[#6e7681]">
+          Secured by <span className="text-[#8b949e] font-medium">Clerk</span> · PairForge
         </p>
       </footer>
     </div>

@@ -4,3 +4,5 @@ dist
 .DS_Store
 *.log
 scratch/
+codeweave_learning_guide.md.resolved
+revison.md

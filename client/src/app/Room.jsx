@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import {
   Save, LogOut, MessageSquare, Zap, Play, Loader2,
   Users, ChevronDown, Check, WifiOff, Wifi, PenTool,
-  Copy, Terminal, HelpCircle, X,
+  Copy, Terminal, HelpCircle, X, Monitor, PanelRightClose, PanelRight,
 } from 'lucide-react';
 import { Editor } from "@monaco-editor/react";
 import { io as socketIO } from "socket.io-client";
@@ -45,6 +45,7 @@ const SHORTCUTS = [
   { keys: "Ctrl + S",        desc: "Save code"             },
   { keys: "Ctrl + Enter",    desc: "Run code"              },
   { keys: "Ctrl + `",        desc: "Toggle terminal"       },
+  { keys: "Ctrl + B",        desc: "Toggle sidebar"        },
   { keys: "Ctrl + Shift + F",desc: "Format code (Monaco)"  },
   { keys: "Ctrl + /",        desc: "Toggle comment"        },
   { keys: "Ctrl + Z",        desc: "Undo"                  },
@@ -84,6 +85,7 @@ export default function Room() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [idCopied, setIdCopied]           = useState(false);
   const [editingName, setEditingName]     = useState(false);
+  const [sidebarOpen, setSidebarOpen]     = useState(true);
 
   /* collab state */
   const [users, setUsers]         = useState([]);
@@ -191,6 +193,12 @@ export default function Room() {
         setShowOutput(s => !s);
         return;
       }
+      /* Ctrl+B → toggle sidebar */
+      if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
+        e.preventDefault();
+        setSidebarOpen(s => !s);
+        return;
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -294,6 +302,24 @@ export default function Room() {
   /* ─── render ─────────────────────────────────────────── */
   return (
     <div className="h-screen flex flex-col bg-[#0d1117] text-[#e6edf3] overflow-hidden">
+
+      {/* ══ Mobile gate overlay ═══════════════════════════════ */}
+      <div className="mobile-gate">
+        <div className="w-16 h-16 rounded-2xl bg-[#161b22] border border-[#30363d] flex items-center justify-center mb-2">
+          <Monitor size={28} className="text-[#58a6ff]" />
+        </div>
+        <h2 className="text-lg font-semibold text-[#e6edf3]">Desktop Experience</h2>
+        <p className="text-sm text-[#8b949e] max-w-xs" style={{ lineHeight: 1.6 }}>
+          The collaborative editor is designed for desktop screens. Please open this page on a device with a larger display.
+        </p>
+        <button
+          onClick={() => navigate('/dashboard')}
+          className="mt-4 px-5 py-2.5 bg-[#58a6ff] text-[#0d1117] rounded-md text-sm font-semibold hover:bg-[#4793e5] transition-colors"
+        >
+          ← Back to Dashboard
+        </button>
+      </div>
+
       {/* ══ 1px brand accent bar ═════════════════════════════ */}
       <div className="h-[2px] w-full shrink-0" style={{ background: 'linear-gradient(90deg, #58a6ff 0%, #a371f7 50%, #3fb950 100%)' }} />
 
@@ -302,6 +328,8 @@ export default function Room() {
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
           onClick={() => setShowShortcuts(false)}
+          role="dialog"
+          aria-label="Keyboard shortcuts"
         >
           <div
             className="bg-[#161b22] border border-[#30363d] rounded-2xl shadow-2xl w-[420px] max-h-[80vh] overflow-hidden"
@@ -315,6 +343,7 @@ export default function Room() {
               <button
                 onClick={() => setShowShortcuts(false)}
                 className="p-1.5 rounded-md hover:bg-[#21262d] text-[#8b949e] hover:text-[#e6edf3] transition-colors"
+                aria-label="Close shortcuts"
               >
                 <X size={15} />
               </button>
@@ -328,26 +357,24 @@ export default function Room() {
               ))}
             </div>
             <div className="px-5 py-3 border-t border-[#21262d] text-center">
-              <span className="text-[10px] text-[#3d444d]">Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-[9px] font-mono">?</kbd> or <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-[9px] font-mono">Esc</kbd> to dismiss</span>
+              <span className="text-[10px] text-[#6e7681]">Press <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-[9px] font-mono">?</kbd> or <kbd className="px-1.5 py-0.5 bg-[#21262d] border border-[#30363d] rounded text-[9px] font-mono">Esc</kbd> to dismiss</span>
             </div>
           </div>
         </div>
       )}
 
       {/* ══ Top Bar ════════════════════════════════════════ */}
-      <header className="h-12 border-b border-[#21262d] flex items-center px-4 gap-3 shrink-0 relative z-50" style={{ background: 'rgba(13,17,23,0.97)', backdropFilter: 'blur(8px)' }}>
+      <header className="h-12 border-b border-[#21262d] flex items-center px-3 sm:px-4 gap-2 sm:gap-3 shrink-0 relative z-50" style={{ background: 'rgba(13,17,23,0.97)', backdropFilter: 'blur(8px)' }}>
 
         {/* Logo */}
-        <button onClick={() => navigate('/dashboard')} className="shrink-0 hover:opacity-75 transition-opacity flex items-center gap-2" title="Back to Dashboard">
+        <button onClick={() => navigate('/dashboard')} className="shrink-0 hover:opacity-75 transition-opacity flex items-center gap-2" title="Back to Dashboard" aria-label="Back to Dashboard">
           <div className="w-6 h-6 rounded-md bg-gradient-to-br from-[#58a6ff] to-[#316dca] flex items-center justify-center">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#0d1117" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/>
-            </svg>
+            <Terminal size={12} strokeWidth={3} className="text-[#0d1117]" />
           </div>
-          <span className="text-sm hidden sm:block" style={{ fontFamily: 'monospace' }}>Pair<span className="text-[#58a6ff]">verse</span></span>
+          <span className="text-sm hidden md:block" style={{ fontFamily: "'JetBrains Mono', monospace" }}>Pair<span className="text-[#58a6ff]">verse</span></span>
         </button>
 
-        <span className="text-[#3d444d]">/</span>
+        <span className="text-[#6e7681] hidden sm:inline">/</span>
 
         {/* Workspace name (inline editable) + copy room ID */}
         <div className="flex items-center gap-2 min-w-0">
@@ -377,9 +404,9 @@ export default function Room() {
             <button
               onClick={() => setEditingName(true)}
               title="Click to rename workspace"
-              className="text-sm font-semibold truncate hover:text-[#58a6ff] transition-colors text-left group flex items-center gap-1.5"
+              className="text-sm font-semibold truncate hover:text-[#58a6ff] transition-colors text-left group flex items-center gap-1.5 max-w-[120px] sm:max-w-[200px]"
             >
-              {workspaceName}
+              <span className="truncate">{workspaceName}</span>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
                 className="opacity-0 group-hover:opacity-60 transition-opacity shrink-0 text-[#8b949e]">
                 <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
@@ -390,6 +417,7 @@ export default function Room() {
           <button
             onClick={handleCopyRoomId}
             title="Copy Room ID"
+            aria-label="Copy Room ID"
             className="flex items-center gap-1 text-[10px] text-[#8b949e] font-mono bg-[#21262d] hover:bg-[#30363d] px-1.5 py-0.5 rounded transition-colors group shrink-0"
           >
             {roomId.slice(0, 8)}
@@ -403,20 +431,22 @@ export default function Room() {
         <div className="flex-1" />
 
         {/* Language picker */}
-        <div className="relative shrink-0" ref={langMenuRef}>
+        <div className="relative shrink-0 hidden sm:block" ref={langMenuRef}>
           <button
             onClick={() => setShowLangMenu(s => !s)}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md bg-[#21262d] hover:bg-[#30363d] border border-[#30363d] text-xs font-medium transition-colors"
+            aria-label="Select language"
           >
             <span className="w-2 h-2 rounded-full" style={{ background: LANG_COLOR[language.label] ?? '#8b949e' }} />
             {language.label}
             <ChevronDown size={11} className="text-[#8b949e]" />
           </button>
           {showLangMenu && (
-            <div className="absolute right-0 top-full mt-1 w-36 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-50">
+            <div className="absolute right-0 top-full mt-1 w-36 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-50" role="menu">
               {LANGUAGES.map(l => (
                 <button
                   key={l.id}
+                  role="menuitem"
                   onClick={() => {
                     setLanguage(l);
                     setShowLangMenu(false);
@@ -443,25 +473,26 @@ export default function Room() {
           <button
             onClick={() => setShowUsersMenu(s => !s)}
             className="flex items-center gap-1.5 px-2 py-1.5 rounded-md hover:bg-[#21262d] transition-colors"
+            aria-label={`${users.length} users online`}
           >
             <div className="flex -space-x-1.5">
-              {users.slice(0, 4).map((u, i) => (
+              {users.slice(0, 3).map((u, i) => (
                 <div key={i} className="w-6 h-6 rounded-full flex items-center justify-center text-[9px] border-2 border-[#0d1117]"
                   style={{ background: u.color || '#888', color: '#0d1117', fontWeight: 700, zIndex: 10 - i }}>
                   {getInitials(u.username)}
                 </div>
               ))}
             </div>
-            <span className="text-xs text-[#8b949e]">{users.length}</span>
-            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[#3fb950]' : 'bg-[#f85149]'}`} />
+            <span className="text-xs text-[#8b949e] hidden sm:inline">{users.length}</span>
+            <span className={`w-1.5 h-1.5 rounded-full ${connected ? 'bg-[#3fb950] pulse-connected' : 'bg-[#f85149]'}`} />
           </button>
           {showUsersMenu && (
-            <div className="absolute right-0 top-full mt-1 w-52 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-50">
+            <div className="absolute right-0 top-full mt-1 w-52 bg-[#161b22] border border-[#30363d] rounded-lg shadow-2xl overflow-hidden z-50" role="menu">
               <div className="px-3 py-2 border-b border-[#30363d]">
                 <p className="text-[10px] text-[#8b949e] uppercase tracking-wide">Online · {users.length}</p>
               </div>
               {users.map((u, i) => (
-                <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#21262d]">
+                <div key={i} className="flex items-center gap-2.5 px-3 py-2.5 hover:bg-[#21262d]" role="menuitem">
                   <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px]" style={{ background: u.color, color: '#0d1117', fontWeight: 700 }}>
                     {getInitials(u.username)}
                   </div>
@@ -473,22 +504,34 @@ export default function Room() {
           )}
         </div>
 
-        <div className="w-px h-5 bg-[#21262d]" />
+        <div className="w-px h-5 bg-[#21262d] hidden sm:block" />
 
         {/* Whiteboard toggle */}
         <button
           onClick={() => setShowWhiteboard(s => !s)}
           title={showWhiteboard ? 'Back to Editor' : 'Open Whiteboard'}
+          aria-label={showWhiteboard ? 'Back to Editor' : 'Open Whiteboard'}
           className={`p-2 rounded-md transition-colors shrink-0 ${showWhiteboard ? 'bg-[#38bdf8]/10 text-[#38bdf8]' : 'text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3]'}`}
         >
           <PenTool size={15} />
+        </button>
+
+        {/* Sidebar toggle */}
+        <button
+          onClick={() => setSidebarOpen(s => !s)}
+          title={sidebarOpen ? 'Collapse sidebar (Ctrl+B)' : 'Expand sidebar (Ctrl+B)'}
+          aria-label={sidebarOpen ? 'Collapse sidebar' : 'Expand sidebar'}
+          className={`p-2 rounded-md transition-colors shrink-0 hidden md:flex ${sidebarOpen ? 'text-[#58a6ff] bg-[#58a6ff]/10' : 'text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3]'}`}
+        >
+          {sidebarOpen ? <PanelRightClose size={15} /> : <PanelRight size={15} />}
         </button>
 
         {/* Shortcuts */}
         <button
           onClick={() => setShowShortcuts(s => !s)}
           title="Keyboard Shortcuts (?)"
-          className="p-2 rounded-md text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3] transition-colors shrink-0"
+          aria-label="Keyboard shortcuts"
+          className="p-2 rounded-md text-[#8b949e] hover:bg-[#21262d] hover:text-[#e6edf3] transition-colors shrink-0 hidden sm:flex"
         >
           <HelpCircle size={15} />
         </button>
@@ -499,18 +542,20 @@ export default function Room() {
         <button
           onClick={handleSave}
           title="Save (Ctrl+S)"
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-[#21262d] text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
+          aria-label="Save code"
+          className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-md hover:bg-[#21262d] text-xs text-[#8b949e] hover:text-[#e6edf3] transition-colors shrink-0"
         >
           {codeSaved ? <Check size={13} className="text-[#3fb950]" /> : <Save size={13} />}
-          <span className={codeSaved ? 'text-[#3fb950]' : ''}>{codeSaved ? 'Saved' : 'Save'}</span>
+          <span className={`hidden sm:inline ${codeSaved ? 'text-[#3fb950]' : ''}`}>{codeSaved ? 'Saved' : 'Save'}</span>
         </button>
 
         {/* Leave */}
         <button
           onClick={() => navigate('/dashboard')}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md hover:bg-[#f85149]/10 text-xs text-[#8b949e] hover:text-[#f85149] transition-colors shrink-0"
+          aria-label="Leave room"
+          className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-md hover:bg-[#f85149]/10 text-xs text-[#8b949e] hover:text-[#f85149] transition-colors shrink-0"
         >
-          <LogOut size={13} /> Leave
+          <LogOut size={13} /> <span className="hidden sm:inline">Leave</span>
         </button>
       </header>
 
@@ -522,34 +567,35 @@ export default function Room() {
 
           {/* ── File Tab bar ─────────────────────────────── */}
           <div className="flex items-center border-b border-[#21262d] shrink-0 bg-[#0d1117] overflow-x-auto">
-            <div className="flex items-center gap-2 px-4 py-2 border-r border-[#21262d] bg-[#161b22] shrink-0">
+            <div className="flex items-center gap-2 px-3 sm:px-4 py-2 border-r border-[#21262d] bg-[#161b22] shrink-0">
               <span
                 className="w-2.5 h-2.5 rounded-full flex-shrink-0"
                 style={{ background: LANG_COLOR[language.label] ?? '#8b949e', boxShadow: `0 0 6px ${LANG_COLOR[language.label] ?? '#8b949e'}60` }}
               />
               <span className="text-[11px] text-[#e6edf3] font-medium" style={{ fontFamily: "'JetBrains Mono', monospace" }}>
-                {showWhiteboard ? 'whiteboard.canvas' : `main.${language.monaco === 'cpp' ? 'cpp' : language.monaco === 'java' ? 'java' : language.monaco === 'python' ? 'py' : 'js'}`}
+                {showWhiteboard ? 'whiteboard.canvas' : `main.${language.monaco === 'cpp' ? 'cpp' : language.monaco === 'java' ? 'java' : language.monaco === 'python' ? 'py' : language.monaco === 'typescript' ? 'ts' : language.monaco === 'go' ? 'go' : language.monaco === 'rust' ? 'rs' : 'js'}`}
               </span>
             </div>
             <div className="flex-1" />
             {/* Editor sub-controls */}
-            <div className="flex items-center gap-2 px-3">
+            <div className="flex items-center gap-2 px-2 sm:px-3">
               <div className="flex items-center gap-1.5">
                 {connected
-                  ? <><span className="w-1.5 h-1.5 rounded-full bg-[#3fb950]" style={{ boxShadow: '0 0 4px #3fb950' }} /><span className="text-[10px] text-[#3fb950] font-medium tracking-wide">LIVE</span></>
+                  ? <><span className="w-1.5 h-1.5 rounded-full bg-[#3fb950] pulse-connected" style={{ boxShadow: '0 0 4px #3fb950' }} /><span className="text-[10px] text-[#3fb950] font-medium tracking-wide">LIVE</span></>
                   : <><span className="w-1.5 h-1.5 rounded-full bg-[#f85149]" /><span className="text-[10px] text-[#f85149] font-medium tracking-wide">OFFLINE</span></>
                 }
               </div>
+              <span className="text-[10px] text-[#484f58] hidden sm:inline">|</span>
+              <span className="text-[10px] text-[#8b949e] hidden sm:inline">{linesCount} lines</span>
+              <span className="text-[10px] text-[#484f58] hidden sm:inline">·</span>
+              <span className="text-[10px] text-[#8b949e] hidden sm:inline">{charsCount} chars</span>
               <span className="text-[10px] text-[#484f58]">|</span>
-              <span className="text-[10px] text-[#8b949e]">{linesCount} lines</span>
-              <span className="text-[10px] text-[#484f58]">·</span>
-              <span className="text-[10px] text-[#8b949e]">{charsCount} chars</span>
-              <span className="text-[10px] text-[#484f58]">|</span>
-              {/* Run button only — Review Code is in the sidebar */}
+              {/* Run button */}
               <button
                 onClick={handleRunCode}
                 disabled={isRunning}
                 title="Run Code (Ctrl+Enter)"
+                aria-label="Run code"
                 className="flex items-center gap-1.5 px-3 py-1 rounded-md text-[11px] font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 style={{
                   background: isRunning ? 'rgba(63,185,80,0.1)' : 'rgba(63,185,80,0.15)',
@@ -587,8 +633,15 @@ export default function Room() {
             )}
           </div>
 
-          {/* ── Terminal (collapsible) ──────────────────── */}
-          <div className={showOutput ? '' : 'hidden'}>
+          {/* ── Terminal (animated) ──────────────────────── */}
+          <div
+            style={{
+              overflow: 'hidden',
+              maxHeight: showOutput ? '280px' : '0px',
+              opacity: showOutput ? 1 : 0,
+              transition: 'max-height 0.25s ease, opacity 0.2s ease',
+            }}
+          >
             <TerminalPanel
               ref={terminalRef}
               isRunning={isRunning}
@@ -599,12 +652,18 @@ export default function Room() {
         </div>
 
         {/* ── Divider ─────────────────────────────────────── */}
-        <div className="w-px bg-[#21262d] shrink-0" />
+        {sidebarOpen && <div className="w-px bg-[#21262d] shrink-0" />}
 
-        {/* ── Right: Sidebar ───────────────────────────────── */}
-        <div className="w-[360px] shrink-0 flex flex-col bg-[#0d1117] overflow-hidden">
+        {/* ── Right: Sidebar (collapsible) ──────────────────── */}
+        <div
+          className="shrink-0 flex flex-col bg-[#0d1117] overflow-hidden transition-all duration-300"
+          style={{
+            width: sidebarOpen ? '360px' : '0px',
+            opacity: sidebarOpen ? 1 : 0,
+          }}
+        >
 
-          {/* Tab bar — premium pill design */}
+          {/* Tab bar */}
           <div className="flex items-center gap-1 px-3 py-2 border-b border-[#21262d] shrink-0 bg-[#0d1117]">
             <button
               onClick={() => { setRightTab('chat'); setUnreadCount(0); }}
@@ -646,7 +705,7 @@ export default function Room() {
           </div>
 
           {/* Tab content */}
-          <div className="flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden tab-fade-enter" key={rightTab}>
             {rightTab === 'chat' ? (
               <ChatPanel
                 socket={chatSocket}
@@ -668,19 +727,20 @@ export default function Room() {
       </div>
 
       {/* ══ Status bar ═════════════════════════════════════ */}
-      <footer className="h-6 border-t border-[#21262d] flex items-center px-4 gap-4 shrink-0" style={{ background: '#161b22' }}>
+      <footer className="h-6 border-t border-[#21262d] flex items-center px-3 sm:px-4 gap-3 sm:gap-4 shrink-0" style={{ background: '#161b22' }}>
         <div className="flex items-center gap-1.5 text-[10px]" style={{ color: LANG_COLOR[language.label] ?? '#8b949e' }}>
           <span className="w-1.5 h-1.5 rounded-full" style={{ background: LANG_COLOR[language.label] ?? '#8b949e', boxShadow: `0 0 4px ${LANG_COLOR[language.label] ?? '#8b949e'}` }} />
           {language.label}
         </div>
-        <span className="text-[10px] text-[#484f58]">UTF-8</span>
-        <span className="text-[10px] text-[#484f58]">LF</span>
+        <span className="text-[10px] text-[#484f58] hidden sm:inline">UTF-8</span>
+        <span className="text-[10px] text-[#484f58] hidden sm:inline">LF</span>
         <div className="flex-1" />
         {/* Terminal toggle in status bar */}
         <button
           onClick={() => setShowOutput(s => !s)}
           className={`flex items-center gap-1 text-[10px] transition-colors px-1.5 py-0.5 rounded ${showOutput ? 'text-[#3fb950]' : 'text-[#8b949e] hover:text-[#e6edf3]'}`}
           title="Toggle Terminal (Ctrl+`)"
+          aria-label="Toggle terminal"
         >
           <Terminal size={9} /> Terminal
         </button>
@@ -689,12 +749,13 @@ export default function Room() {
         </div>
         <button
           onClick={() => setShowShortcuts(true)}
-          className="text-[10px] text-[#484f58] hover:text-[#e6edf3] transition-colors px-1 py-0.5 rounded hover:bg-[#21262d]"
+          className="text-[10px] text-[#484f58] hover:text-[#e6edf3] transition-colors px-1 py-0.5 rounded hover:bg-[#21262d] hidden sm:inline"
           title="Keyboard Shortcuts"
+          aria-label="Keyboard shortcuts"
         >
           ?
         </button>
-        <span className="text-[10px] text-[#484f58]">Pairverse · MVP</span>
+        <span className="text-[10px] text-[#484f58] hidden sm:inline">PairForge</span>
       </footer>
 
       {/* Overlay to close menus */}
