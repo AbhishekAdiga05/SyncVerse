@@ -24,7 +24,7 @@ createRoot(document.getElementById('root')).render(
     ) : (
       <div style={{ padding: '20px', color: 'white', backgroundColor: '#111', height: '100vh', fontFamily: 'sans-serif' }}>
         <h2>Missing Clerk Publishable Key</h2>
-        <p>Please create a <b>.env.local</b> file in the `c:\CollabX\client` folder.</p>
+        <p>Please create a <b>.env.local</b> file in the <code>client</code> folder.</p>
         <p>Inside the file, paste your key like this:</p>
         <code>VITE_CLERK_PUBLISHABLE_KEY=pk_test_...</code>
         <p>Then restart your frontend server.</p>

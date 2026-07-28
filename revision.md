@@ -1,6 +1,6 @@
-# CollabX (Pairverse) — Complete Project Revision
+# SyncVerse — Complete Project Revision
 
-> **Purpose:** This document is a comprehensive reconstruction guide and interview preparation artifact. It covers every feature, every architectural decision, every technical challenge, and the exact user flow for each capability in the CollabX collaborative coding platform.
+> **Purpose:** This document is a comprehensive reconstruction guide and interview preparation artifact. It covers every feature, every architectural decision, every technical challenge, and the exact user flow for each capability in the SyncVerse collaborative coding platform.
 
 ---
 
@@ -22,7 +22,7 @@
 
 ## 1. Project Overview
 
-**CollabX (Pairverse)** is a full-stack, browser-based collaborative development environment. It enables multiple developers to write code, draw diagrams, chat, run code, and get AI-powered code reviews — all in real-time.
+**SyncVerse (Pairverse)** is a full-stack, browser-based collaborative development environment. It enables multiple developers to write code, draw diagrams, chat, run code, and get AI-powered code reviews — all in real-time.
 
 ### Stack
 
@@ -43,7 +43,7 @@
 ### Repository Structure
 
 ```
-CollabX/
+SyncVerse/
 ├── client/                    # React frontend (Vite)
 │   ├── src/
 │   │   ├── app/               # Pages & components
@@ -302,7 +302,7 @@ const binding = new MonacoBinding(
 ### Interview Talking Points
 
 - **Why CRDT (Yjs) over OT (Operational Transform)?** CRDTs provide automatic conflict resolution without a central server. OT requires a server to order operations. Yjs uses a state vector-based protocol that handles network partitions gracefully.
-- **Why y-socket.io instead of y-websocket?** y-websocket uses raw WebSocket, which complicates authentication, room management, and reconnection. Socket.IO provides rooms, namespaces, middleware, and reconnection out of the box. CollabX uses Socket.IO for both chat and Yjs transport.
+- **Why y-socket.io instead of y-websocket?** y-websocket uses raw WebSocket, which complicates authentication, room management, and reconnection. Socket.IO provides rooms, namespaces, middleware, and reconnection out of the box. SyncVerse uses Socket.IO for both chat and Yjs transport.
 - **Debounce strategy:** 2-second debounce prevents MongoDB write storms during rapid typing while ensuring persistence within a reasonable window. On document-destroy (last user leaves), save is immediate.
 - **MonacoBinding vs custom sync:** y-monaco's MonacoBinding handles all edge cases: editor initialization, undo/redo stack merging, cursor awareness, and selection restoration. Reimplementing would be error-prone.
 - **Stale closure bug:** The keyboard shortcut handler (`useEffect` with `addEventListener`) captured the initial closure of `handleSave`/`handleRunCode`. After React re-renders, these functions may change (e.g., `aiState` updates), but the event listener still calls the old version. Fix: store functions in refs, call `ref.current()` from the handler.
@@ -491,7 +491,7 @@ socket.on("chat:message", (data) => {
 - **Trade-off:** Server restart loses all chat history. For a production collaboration tool, you'd want persistent chat with MongoDB and message pagination.
 - **Character cap (500):** Prevents spam and oversized messages from clogging the WebSocket pipeline.
 - **Client-constructed vs server-constructed messages:** Clients send `{ roomId, text }`. The server constructs the full message object with `id`, `username`, `color`, `timestamp`. This prevents client impersonation — users cannot forge who sent a message.
-- **How `username` and `userColor` reach the server?** The server reads them from the `chat:join` event or from a shared awareness state. In CollabX, the ChatPanel passes `user.id` from Clerk and a randomly assigned `userColor` from Room.jsx.
+- **How `username` and `userColor` reach the server?** The server reads them from the `chat:join` event or from a shared awareness state. In SyncVerse, the ChatPanel passes `user.id` from Clerk and a randomly assigned `userColor` from Room.jsx.
 
 ---
 
@@ -897,7 +897,7 @@ Room.jsx state exposed to panels:
 
 ### State Management (no Redux/Zustand)
 
-CollabX intentionally has **no global state management library**. State is managed through:
+SyncVerse intentionally has **no global state management library**. State is managed through:
 
 | Pattern | Used For |
 |---|---|

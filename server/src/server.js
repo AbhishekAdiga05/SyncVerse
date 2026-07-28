@@ -18,7 +18,22 @@ import helmet from "helmet";
 
 // 1. Initialize Database Connection
 const app = express();
-app.use(helmet()); // Secure HTTP headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://*.clerk.accounts.dev", "https://cdn.jsdelivr.net"],
+      scriptSrcElem: ["'self'", "https://*.clerk.accounts.dev", "https://cdn.jsdelivr.net"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://*.clerk.accounts.dev", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+      styleSrcElem: ["'self'", "'unsafe-inline'", "https://*.clerk.accounts.dev", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+      connectSrc: ["'self'", "https://*.clerk.accounts.dev", "wss:", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
+      imgSrc: ["'self'", "data:", "https://*.clerk.accounts.dev", "https://img.clerk.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      frameSrc: ["https://*.clerk.accounts.dev"],
+      workerSrc: ["'self'", "blob:", "https://cdn.jsdelivr.net"],
+    },
+  },
+}));
 
 // 2. CORS configuration
 const corsOrigins = process.env.CORS_ORIGIN
@@ -75,6 +90,11 @@ app.use("/api", requireAuth);
 app.use("/api/workspaces", workspaceRoutes);
 app.use("/api/execution", executionRoutes);
 app.use("/api/ai", aiRoutes);
+
+// 9. SPA fallback — serve index.html for non-API routes
+app.use((req, res) => {
+  res.sendFile("index.html", { root: "public" });
+});
 
 // Global Error Handler
 app.use((err, req, res, next) => {

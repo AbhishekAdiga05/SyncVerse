@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect } from "react";
-import { Send, MessageSquare } from "lucide-react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { Send, MessageSquare, Search, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 export default function ChatPanel({ socket, roomId, username, userColor, onUnread }) {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
 
@@ -59,20 +60,60 @@ export default function ChatPanel({ socket, roomId, username, userColor, onUnrea
     return name.split(" ").map(p => p[0]).join("").toUpperCase().slice(0, 2) || "?";
   }
 
-  const grouped = messages.map((msg, i) => ({
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    const q = searchQuery.trim().toLowerCase();
+    return messages.filter(msg =>
+      msg.text?.toLowerCase().includes(q) || msg.username?.toLowerCase().includes(q)
+    );
+  }, [messages, searchQuery]);
+
+  const grouped = filteredMessages.map((msg, i) => ({
     msg,
-    showAvatar: i === 0 || messages[i - 1]?.username !== msg.username || !!msg.isSystem || !!messages[i - 1]?.isSystem || (msg.timestamp - messages[i - 1]?.timestamp > 60000)
+    showAvatar: i === 0 || filteredMessages[i - 1]?.username !== msg.username || !!msg.isSystem || !!filteredMessages[i - 1]?.isSystem || (msg.timestamp - filteredMessages[i - 1]?.timestamp > 60000)
   }));
 
   return (
     <div className="flex flex-col h-full bg-[#0d1117] overflow-hidden">
+      {/* Search bar */}
+      {messages.length > 0 && (
+        <div className="px-3 pt-3 pb-2 border-b border-[#21262d]">
+          <div className="relative">
+            <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#3d444d]" />
+            <input
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search messages..."
+              spellCheck={false}
+              className="w-full bg-[#161b22] border border-[#30363d] rounded-lg pl-7 pr-3 py-1.5 text-xs text-[#e6edf3] placeholder:text-[#3d444d] focus:border-[#8b949e] focus:outline-none transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#3d444d] hover:text-[#8b949e] transition-colors"
+              >
+                <XCircle size={11} />
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
         {messages.length === 0 ? (
           <div className="h-full flex flex-col items-center justify-center text-center py-12">
-            <MessageSquare size={28} className="text-[#30363d] mb-3" />
+            <div className="w-10 h-10 rounded-xl bg-[#21262d] border border-[#30363d] flex items-center justify-center mb-3">
+              <MessageSquare size={18} className="text-[#3d444d]" />
+            </div>
             <p className="text-sm text-[#8b949e]">No messages yet</p>
             <p className="text-xs text-[#3d444d] mt-1">Start the conversation below.</p>
+          </div>
+        ) : filteredMessages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center text-center py-12">
+            <Search size={18} className="text-[#3d444d] mb-2" />
+            <p className="text-xs text-[#8b949e]">No messages match your search.</p>
+            <button onClick={() => setSearchQuery("")} className="text-[10px] text-[#58a6ff] hover:underline mt-1">Clear search</button>
           </div>
         ) : (
           grouped.map(({ msg, showAvatar }, idx) => {
@@ -88,7 +129,6 @@ export default function ChatPanel({ socket, roomId, username, userColor, onUnrea
             const isMe = msg.username === username;
             return (
               <div key={msg.id || idx} className={`flex gap-2 ${isMe ? "flex-row-reverse" : "flex-row"} ${showAvatar ? "mt-3" : "mt-0.5"}`}>
-                {/* Avatar */}
                 {showAvatar ? (
                   <div
                     className="w-6 h-6 rounded-full shrink-0 flex items-center justify-center text-[10px] mt-0.5"

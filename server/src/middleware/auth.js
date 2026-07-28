@@ -4,23 +4,22 @@ const clerkClient = createClerkClient({
   secretKey: process.env.CLERK_SECRET_KEY,
 });
 
-const publicPaths = ["/health"];
+const PUBLISHABLE_KEY = process.env.VITE_CLERK_PUBLISHABLE_KEY;
 
 export const requireAuth = async (req, res, next) => {
-  if (publicPaths.includes(req.path)) return next();
-
-  const header = req.headers.authorization;
-  if (!header || !header.startsWith("Bearer ")) {
-    return res.status(401).json({ success: false, message: "Missing or invalid authorization header" });
-  }
-
-  const token = header.slice(7);
-
   try {
-    const { sub } = await clerkClient.verifyToken(token);
-    req.auth = { userId: sub };
+    const fullUrl = `${req.protocol}://${req.get("host")}${req.originalUrl}`;
+    const clerkReq = { headers: req.headers, method: req.method, url: fullUrl };
+    const state = await clerkClient.authenticateRequest(clerkReq, {
+      publishableKey: PUBLISHABLE_KEY,
+    });
+    if (!state.isSignedIn) {
+      return res.status(401).json({ success: false, message: "Invalid or expired session token" });
+    }
+    req.auth = { userId: state.toAuth().userId };
     next();
-  } catch {
+  } catch (err) {
+    console.error("[Auth] Error:", err?.message || err);
     return res.status(401).json({ success: false, message: "Invalid or expired session token" });
   }
 };
