@@ -13,23 +13,31 @@ const decodeBase64 = (value) => {
  * Language IDs: https://ce.judge0.com/languages
  */
 export const runCodeWithJudge0 = async ({ sourceCode, languageId, stdin = "" }) => {
-  // Use the Judge0 CE cloud instance - no API key needed, works on all platforms
   const judge0Url = process.env.JUDGE0_API_URL || "https://ce.judge0.com";
 
-  const response = await fetch(
-    `${judge0Url}/submissions?base64_encoded=true&wait=true`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        source_code: encodeBase64(sourceCode),
-        language_id: languageId,
-        stdin: encodeBase64(stdin),
-      }),
-    }
-  );
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 30000);
+
+  let response;
+  try {
+    response = await fetch(
+      `${judge0Url}/submissions?base64_encoded=true&wait=true`,
+      {
+        signal: controller.signal,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          source_code: encodeBase64(sourceCode),
+          language_id: languageId,
+          stdin: encodeBase64(stdin),
+        }),
+      }
+    );
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     const errorText = await response.text();

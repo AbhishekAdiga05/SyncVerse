@@ -16,7 +16,7 @@ const VALID_ACTIONS = ["explain", "refactor", "generate", "debug"];
  *
  * Response: { success: true, result: "<AI markdown string>" }
  */
-export const handleAiRequest = async (req, res) => {
+export const handleAiRequest = async (req, res, next) => {
   try {
     const { action, code, language, prompt, stderr } = req.body;
 
@@ -51,12 +51,6 @@ export const handleAiRequest = async (req, res) => {
       result: aiResponse,
     });
   } catch (error) {
-    console.error(`[AI] OpenRouter request failed:`, error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "AI request failed",
-      error: error.message,
-    });
+    next(error);
   }
 };

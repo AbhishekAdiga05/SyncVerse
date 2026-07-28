@@ -8,7 +8,8 @@ export const initializeYjsSockets = (io) => {
 
     // 1. Load data from MongoDB when a room is opened
     ySocketIO.on("document-loaded", async (doc) => {
-        const roomId = doc.name; 
+        const roomId = doc.name;
+        if (!roomId) return;
         try {
             let workspace = await Workspace.findOne({ roomId });
             
@@ -20,13 +21,14 @@ export const initializeYjsSockets = (io) => {
             if (workspace.ydocState) {
                 try {
                     Y.applyUpdate(doc, new Uint8Array(workspace.ydocState.buffer));
+                    return; // Full state restored — skip legacy fallback
                 } catch (e) {
                     console.error(`Failed to restore Yjs state for room ${roomId}:`, e.message);
-                    // Fall through to legacy code-only injection
+                    // Fall through to legacy code-only injection below
                 }
             }
 
-            // If no ydocState or restoration failed, inject from legacy code field
+            // Only reach here if no ydocState or restoration failed
             const yText = doc.getText("monaco");
             const dbCode = workspace.code || "// Start coding collaboratively here...";
             if (yText.toString() !== dbCode) {
@@ -43,6 +45,7 @@ export const initializeYjsSockets = (io) => {
 
     ySocketIO.on("document-update", (doc) => {
         const roomId = doc.name;
+        if (!roomId) return;
         const yText = doc.getText("monaco").toString();
 
         // Clear existing timer for this room
@@ -67,6 +70,7 @@ export const initializeYjsSockets = (io) => {
     // 3. Save immediately when the last user leaves the room (e.g., on Refresh)
     ySocketIO.on("document-destroy", async (doc) => {
         const roomId = doc.name;
+        if (!roomId) return;
         const yText = doc.getText("monaco").toString();
 
         if (saveTimers[roomId]) clearTimeout(saveTimers[roomId]);

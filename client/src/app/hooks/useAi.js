@@ -1,34 +1,13 @@
 import { useState } from "react";
 import { API_URL } from "../config.js";
 
-/**
- * useAi — encapsulates all AI Intent Mode state and fetch logic.
- *
- * Keeps Room.jsx clean by extracting AI concerns into a dedicated hook.
- * The fetch pattern mirrors handleRunCode() in Room.jsx for consistency.
- *
- * @returns {{
- *   aiResponse: string,
- *   aiLoading: boolean,
- *   aiError: string,
- *   aiPrompt: string,
- *   setAiPrompt: Function,
- *   activeAction: string|null,
- *   triggerAi: Function,
- *   clearAi: Function,
- * }}
- */
-export function useAi() {
+export function useAi(getToken) {
   const [aiResponse, setAiResponse]     = useState("");
   const [aiLoading, setAiLoading]       = useState(false);
   const [aiError, setAiError]           = useState("");
-  const [aiPrompt, setAiPrompt]         = useState("");        // natural-language prompt for "generate"
-  const [activeAction, setActiveAction] = useState(null);     // "explain"|"refactor"|"generate"|"debug"
+  const [aiPrompt, setAiPrompt]         = useState("");
+  const [activeAction, setActiveAction] = useState(null);
 
-  /**
-   * Sends an AI request to the backend.
-   * @param {{ action: string, code?: string, language?: string, stderr?: string }} params
-   */
   const triggerAi = async ({ action, code, language, stderr = "" }) => {
     setAiLoading(true);
     setAiResponse("");
@@ -36,15 +15,16 @@ export function useAi() {
     setActiveAction(action);
 
     try {
+      const token = await getToken();
       const res = await fetch(`${API_URL}/api/ai`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
         body: JSON.stringify({
           action,
           code,
           language,
-          prompt: aiPrompt,   // used only by "generate"
-          stderr,             // used only by "debug"
+          prompt: aiPrompt,
+          stderr,
         }),
       });
 
@@ -61,7 +41,6 @@ export function useAi() {
     }
   };
 
-  /** Resets all AI state — used by the clear button in AiPanel. */
   const clearAi = () => {
     setAiResponse("");
     setAiError("");

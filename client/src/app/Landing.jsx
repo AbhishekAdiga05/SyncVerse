@@ -1,7 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import { Users, Zap, MessageSquare, Save, ChevronRight, Shield, Terminal, PenTool, ArrowRight, Play, Loader2 } from 'lucide-react';
-import { SignedIn, SignedOut, useUser } from "@clerk/clerk-react";
+import { Users, Zap, MessageSquare, Save, ChevronRight, Shield, Terminal, PenTool, ArrowRight, Play, Loader2, LogIn } from 'lucide-react';
+import { SignedIn, SignedOut, useUser, useAuth } from "@clerk/clerk-react";
 import { API_URL } from './config.js';
 
 function useReveal(delay = 0) {
@@ -120,6 +120,7 @@ const FEATURES = [
 export default function Landing() {
   const navigate = useNavigate();
   const { isSignedIn } = useUser();
+  const { getToken } = useAuth();
   const [heroRef, heroVisible] = useReveal(0);
   const [archRef, archVisible] = useReveal(0);
   const [stepsRef, stepsVisible] = useReveal(0);
@@ -137,14 +138,17 @@ export default function Landing() {
   const [playRunning, setPlayRunning] = useState(false);
 
   const handlePlayRun = async () => {
+    if (!isSignedIn) { setPlayOutput('Please sign in to run code'); return; }
     setPlayRunning(true);
     setPlayOutput('');
     try {
+      const token = await getToken();
       const res = await fetch(`${API_URL}/api/execution/run`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ sourceCode: playCode, languageId: playLang.id, stdin: '' }),
       });
+      if (res.status === 401) { setPlayOutput('Session expired. Please sign in again.'); return; }
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Execution failed');
       const r = data.result;

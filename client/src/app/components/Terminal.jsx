@@ -66,7 +66,7 @@ const Terminal = forwardRef(function Terminal({ isRunning, onExecute, onClose, o
   };
 
   return (
-    <div className="border-t border-[#21262d] bg-[#0d1117] shrink-0 flex flex-col" style={{ height: '240px' }}>
+    <div className="border-t border-[#21262d] bg-[#0d1117] shrink-0 flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-1.5 bg-[#161b22] border-b border-[#21262d] shrink-0">
         <div className="flex items-center gap-2">
           <TerminalIcon size={13} className="text-[#8b949e]" />

@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { Send, MessageSquare } from "lucide-react";
+import { toast } from "sonner";
 
 export default function ChatPanel({ socket, roomId, username, userColor, onUnread }) {
   const [messages, setMessages] = useState([]);
@@ -10,20 +11,23 @@ export default function ChatPanel({ socket, roomId, username, userColor, onUnrea
   useEffect(() => {
     if (!socket || !roomId) return;
 
-    socket.emit("chat:join", { roomId });
+    socket.emit("chat:join", { roomId, username, color: userColor });
 
     const handleHistory = (history) => setMessages(history);
     const handleMessage = (msg) => {
       setMessages((prev) => [...prev, msg]);
       if (onUnread) onUnread();
     };
+    const handleError = ({ message }) => toast.error(message);
 
     socket.on("chat:history", handleHistory);
     socket.on("chat:message", handleMessage);
+    socket.on("chat:error", handleError);
 
     return () => {
       socket.off("chat:history", handleHistory);
       socket.off("chat:message", handleMessage);
+      socket.off("chat:error", handleError);
     };
   }, [socket, roomId, onUnread]);
 
@@ -34,7 +38,7 @@ export default function ChatPanel({ socket, roomId, username, userColor, onUnrea
   const send = () => {
     const text = input.trim();
     if (!text || !socket) return;
-    socket.emit("chat:message", { roomId, username, color: userColor, text });
+    socket.emit("chat:message", { roomId, text });
     setInput("");
     inputRef.current?.focus();
   };

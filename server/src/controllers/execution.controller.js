@@ -1,6 +1,6 @@
 import { runCodeWithJudge0 } from "../services/judge0.service.js";
 
-export const runCode = async (req, res) => {
+export const runCode = async (req, res, next) => {
   try {
     const { sourceCode, languageId, stdin } = req.body;
 
@@ -22,12 +22,6 @@ export const runCode = async (req, res) => {
       result,
     });
   } catch (error) {
-    console.error("Code execution failed:", error.message);
-
-    return res.status(500).json({
-      success: false,
-      message: "Code execution failed",
-      error: error.message,
-    });
+    next(error);
   }
 };

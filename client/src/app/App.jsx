@@ -1,6 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom"
 import { SignedIn, SignedOut } from "@clerk/clerk-react"
 import { Toaster } from "sonner"
+import ErrorBoundary from "./components/ErrorBoundary"
 import Landing from "./Landing"
 import Dashboard from "./Dashboard"
 import Room from "./Room"
@@ -12,6 +13,7 @@ import "./App.css"
 function App() {
   return (
     <BrowserRouter>
+      <ErrorBoundary>
       <Toaster
         position="bottom-right"
         toastOptions={{
@@ -43,6 +45,7 @@ function App() {
         } />
         <Route path="*" element={<NotFound />} />
       </Routes>
+      </ErrorBoundary>
     </BrowserRouter>
   )
 }
