@@ -1,4 +1,4 @@
-# Pairverse
+# SyncVerse
 
 > Collaborative code editor with real-time CRDT sync, AI code review, and collaborative whiteboarding.
 
